@@ -1,0 +1,426 @@
+openapi: 3.1.0
+info:
+  title: Loan Service API
+  version: 1.0.0-draft
+  description: |
+    Design sketch for phases 3–6 (see ../prd-replatform.md and ../technical-design-replatform.md).
+    Not yet implemented. Decimal values are JSON strings at fixed scale so they round-trip exactly.
+    Code values (eligibilityCode, decision.code, status) keep the legacy wire values.
+servers:
+  - url: http://localhost:8080
+    description: Local (plain HTTP; TLS terminates at the regional ALB when deployed)
+security:
+  - bearerAuth: []
+tags:
+  - name: applications
+  - name: eligibility
+  - name: customers
+  - name: health
+paths:
+  /v1/applications:
+    post:
+      tags: [applications]
+      operationId: createApplication
+      summary: Submit a loan application and get the underwriting decision
+      description: |
+        Replaces legacy `POST /apply`. Business result matches `LoanApplicationManager.processApplication`.
+        Declines (including watchlist) return 201 with `status: DECLINED`.
+        Requires scope `loan.application.write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateApplicationRequest' }
+            example:
+              customerId: C10001
+              productCode: AUTO
+              requestedAmount: "25000.00"
+              termMonths: 60
+              purposeCode: PURCHASE
+              collateralType: AUTO
+              collateralValue: "30000.00"
+      responses:
+        '201':
+          description: Application created and decided (or idempotent replay of the original response)
+          headers:
+            Location:
+              schema: { type: string }
+              description: /v1/applications/{applicationId}
+            Idempotent-Replayed:
+              schema: { type: boolean }
+              description: Present and true when the response is a replay
+            X-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /v1/applications/{applicationId}:
+    get:
+      tags: [applications]
+      operationId: getApplication
+      summary: Get an application with its decision, documents and payment schedule
+      description: Replaces legacy `GET /underwrite?applId=`. Requires scope `loan.application.read`.
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Application
+          headers:
+            X-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /v1/eligibility:
+    post:
+      tags: [eligibility]
+      operationId: checkEligibility
+      summary: Quick eligibility check (no application is created)
+      description: |
+        Replaces legacy `POST /eligibility`. Business result matches `checkEligibilityOnly`
+        (including: KYC data-incomplete is ignored here). Writes audit rows only.
+        Requires scope `loan.eligibility.check`.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EligibilityCheckRequest' }
+            example:
+              customerId: C10001
+              productCode: AUTO
+              requestedAmount: "20000.00"
+              termMonths: 48
+              collateralType: AUTO
+              collateralValue: "28000.00"
+      responses:
+        '200':
+          description: Eligibility result
+          headers:
+            X-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EligibilityCheckResult' }
+              example:
+                eligibilityCheckId: 2b0f8a4e-6f53-4a0c-9d2e-6d3f0f1b7c11
+                customerId: C10001
+                productCode: AUTO
+                eligibilityCode: "Y"
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /v1/customers/{customerId}:
+    get:
+      tags: [customers]
+      operationId: getCustomer
+      summary: Get a customer (same fields as the legacy customer page)
+      description: Replaces legacy `GET /customer?customerId=`. Requires scope `loan.customer.read`.
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9]{1,20}$' }
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Customer
+          headers:
+            X-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
+  /health/live:
+    get:
+      tags: [health]
+      operationId: liveness
+      security: []
+      summary: Liveness (process up)
+      responses:
+        '200':
+          description: UP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: readiness
+      security: []
+      summary: Readiness (database reachable and migrations current; DOWN while shutting down)
+      responses:
+        '200':
+          description: UP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+        '503':
+          description: DOWN or OUT_OF_SERVICE
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC access token (org IdP when deployed; HMAC test token locally). Scopes per operation.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,100}$' }
+      description: Client-generated key; same key + same body replays the original result for 24h.
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+      description: Kept if valid, otherwise generated. Always echoed.
+  headers:
+    RequestId:
+      schema: { type: string }
+      description: Request id for correlation (also in error envelopes and logs)
+  schemas:
+    Decimal2:
+      type: string
+      pattern: '^\d{1,12}(\.\d{1,2})?$'
+      description: Non-negative decimal, up to 2 fraction digits (numeric(14,2))
+    Decimal4:
+      type: string
+      pattern: '^-?\d{1,4}\.\d{4}$'
+      description: Rate or percentage at scale 4 (numeric(8,4))
+    ProductCode:
+      type: string
+      enum: [AUTO, MORTGAGE, HELOC, PERSONAL]
+    CreateApplicationRequest:
+      type: object
+      additionalProperties: false
+      required: [customerId, productCode, requestedAmount, termMonths]
+      properties:
+        customerId: { type: string, pattern: '^[A-Za-z0-9]{1,20}$' }
+        productCode: { $ref: '#/components/schemas/ProductCode' }
+        requestedAmount:
+          allOf: [{ $ref: '#/components/schemas/Decimal2' }]
+          description: Must be > 0
+        termMonths: { type: integer, minimum: 1, maximum: 600 }
+        purposeCode: { type: string, maxLength: 40 }
+        collateralType:
+          type: string
+          maxLength: 40
+          description: Free text as today (AUTO, HOME, RE, NONE, UNSECURED have haircut rules; others none). Defaults to NONE.
+        collateralValue: { $ref: '#/components/schemas/Decimal2' }
+    EligibilityCheckRequest:
+      type: object
+      additionalProperties: false
+      required: [customerId, productCode, requestedAmount, termMonths]
+      properties:
+        customerId: { type: string, pattern: '^[A-Za-z0-9]{1,20}$' }
+        productCode: { $ref: '#/components/schemas/ProductCode' }
+        requestedAmount: { $ref: '#/components/schemas/Decimal2' }
+        termMonths: { type: integer, minimum: 1, maximum: 600 }
+        collateralType: { type: string, maxLength: 40 }
+        collateralValue: { $ref: '#/components/schemas/Decimal2' }
+    EligibilityCheckResult:
+      type: object
+      required: [eligibilityCheckId, customerId, productCode, eligibilityCode]
+      properties:
+        eligibilityCheckId: { type: string, format: uuid }
+        customerId: { type: string }
+        productCode: { type: string }
+        eligibilityCode: { type: string, enum: ['Y', 'N', 'WL', 'ERR'] }
+    Application:
+      type: object
+      required: [applicationId, customerId, productCode, requestedAmount, termMonths, eligibilityCode, decision, status, createdAt, updatedAt]
+      properties:
+        applicationId: { type: string, format: uuid }
+        customerId: { type: string }
+        productCode: { type: string }
+        requestedAmount: { $ref: '#/components/schemas/Decimal2' }
+        termMonths: { type: integer }
+        purposeCode: { type: [string, 'null'] }
+        collateral:
+          type: object
+          properties:
+            type: { type: string }
+            value: { $ref: '#/components/schemas/Decimal2' }
+        ficoScore: { type: [integer, 'null'] }
+        ltvPct: { oneOf: [{ $ref: '#/components/schemas/Decimal4' }, { type: 'null' }] }
+        dtiPct: { oneOf: [{ $ref: '#/components/schemas/Decimal4' }, { type: 'null' }] }
+        baseRate: { oneOf: [{ $ref: '#/components/schemas/Decimal4' }, { type: 'null' }] }
+        finalRate: { oneOf: [{ $ref: '#/components/schemas/Decimal4' }, { type: 'null' }] }
+        eligibilityCode: { type: string, enum: ['Y', 'N', 'WL', 'ERR'] }
+        decision:
+          type: object
+          required: [code, description, stipulationsRequired]
+          properties:
+            code: { type: string, enum: [A, D, R, E] }
+            description: { type: string, examples: [Approved, Declined, Refer to underwriter, Error / incomplete] }
+            reason: { type: [string, 'null'], examples: [auto-approve, fico below floor, watchlist] }
+            approvedAmount: { oneOf: [{ $ref: '#/components/schemas/Decimal2' }, { type: 'null' }] }
+            approvedRate: { oneOf: [{ $ref: '#/components/schemas/Decimal4' }, { type: 'null' }] }
+            stipulationsRequired: { type: boolean }
+        status: { type: string, enum: [APPROVED, REFER, DECLINED] }
+        lastError: { type: [string, 'null'] }
+        requiredDocuments:
+          type: array
+          items:
+            type: object
+            required: [type, required, received]
+            properties:
+              type: { type: string, examples: [GOV_ID, INCOME_PROOF, VEHICLE_TITLE] }
+              required: { type: boolean }
+              received: { type: boolean }
+        paymentSchedule:
+          description: Present for decisions A and R (recomputed from amount, final rate and term)
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [monthlyPayment, installments]
+              properties:
+                monthlyPayment: { $ref: '#/components/schemas/Decimal2' }
+                installments:
+                  type: array
+                  items:
+                    type: object
+                    required: [number, payment, principal, interest, remainingBalance]
+                    properties:
+                      number: { type: integer }
+                      payment: { $ref: '#/components/schemas/Decimal2' }
+                      principal: { $ref: '#/components/schemas/Decimal2' }
+                      interest: { $ref: '#/components/schemas/Decimal2' }
+                      remainingBalance: { $ref: '#/components/schemas/Decimal2' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Customer:
+      type: object
+      description: Same fields as the legacy customer page; no SSN last-4, no phone.
+      required: [customerId]
+      properties:
+        customerId: { type: string }
+        firstName: { type: [string, 'null'] }
+        lastName: { type: [string, 'null'] }
+        employerName: { type: [string, 'null'] }
+        employmentStatus: { type: [string, 'null'], examples: [EMPLOYED, SELF_EMPLOYED] }
+        annualIncome: { oneOf: [{ $ref: '#/components/schemas/Decimal2' }, { type: 'null' }] }
+        monthlyDebt: { oneOf: [{ $ref: '#/components/schemas/Decimal2' }, { type: 'null' }] }
+        email: { type: [string, 'null'] }
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [UP, DOWN, OUT_OF_SERVICE] }
+    Error:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          enum:
+            - VALIDATION_FAILED
+            - MALFORMED_REQUEST
+            - IDEMPOTENCY_KEY_REQUIRED
+            - UNAUTHENTICATED
+            - FORBIDDEN
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - NOT_ACCEPTABLE
+            - UNSUPPORTED_MEDIA_TYPE
+            - IDEMPOTENCY_IN_PROGRESS
+            - CUSTOMER_NOT_FOUND
+            - KYC_DATA_INCOMPLETE
+            - IDEMPOTENCY_KEY_REUSED
+            - DEPENDENCY_UNAVAILABLE
+            - INTERNAL_ERROR
+        message: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            required: [issue]
+            properties:
+              field: { type: string }
+              issue: { type: string }
+        requestId: { type: string }
+  responses:
+    BadRequest:
+      description: VALIDATION_FAILED, MALFORMED_REQUEST or IDEMPOTENCY_KEY_REQUIRED
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: VALIDATION_FAILED
+            message: Request validation failed
+            details: [{ field: termMonths, issue: must be between 1 and 600 }]
+            requestId: 6f1c2b8e-3d5a-4e0f-9b1d-2a7c8e4f0a11
+    Unauthenticated:
+      description: Missing, invalid, expired or wrong-audience token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Token lacks the required scope
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: IDEMPOTENCY_IN_PROGRESS
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: CUSTOMER_NOT_FOUND, KYC_DATA_INCOMPLETE (create only) or IDEMPOTENCY_KEY_REUSED (create only)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: CUSTOMER_NOT_FOUND
+            message: Customer not found
+            requestId: 6f1c2b8e-3d5a-4e0f-9b1d-2a7c8e4f0a11
+    DependencyUnavailable:
+      description: Database, credit or KYC dependency unavailable, timed out or circuit open
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: DEPENDENCY_UNAVAILABLE
+            message: A required dependency is temporarily unavailable
+            requestId: 6f1c2b8e-3d5a-4e0f-9b1d-2a7c8e4f0a11
+    InternalError:
+      description: Unexpected error (no internals exposed)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

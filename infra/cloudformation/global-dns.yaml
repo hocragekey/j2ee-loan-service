@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  loan-service global traffic (deploy once, in us-east-1 where Route 53
+  health-check metrics are published). Route 53 latency-based alias records to
+  each regional ALB, each gated by an HTTPS health check on the readiness path,
+  so an unhealthy region is removed from the pool and the other region serves
+  all traffic (active-active). HostedZoneId/RecordName are optional: when
+  empty (integration-only gap, no domain yet) only the health checks and alarms
+  are created and the DNS records are skipped. Controls: PLAT-10, RES-01, RES-08, IAC-08.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Zone and name }
+        Parameters: [EnvironmentName, ServiceName, HostedZoneId, RecordName]
+      - Label: { default: Region A }
+        Parameters: [RegionA, RegionAAlbDnsName, RegionAAlbHostedZoneId]
+      - Label: { default: Region B }
+        Parameters: [RegionB, RegionBAlbDnsName, RegionBAlbHostedZoneId]
+      - Label: { default: Health checks }
+        Parameters:
+          - HealthCheckProtocol
+          - HealthCheckPath
+          - HealthCheckIntervalSeconds
+          - HealthCheckFailureThreshold
+          - AlarmTopicArn
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    AllowedValues: [integration, dev, staging, prod]
+    Description: Deployment environment name. Names are prefixed ServiceName-EnvironmentName (e.g. loan-svc-integration).
+  ServiceName:
+    Type: String
+    Default: loan-service
+    AllowedPattern: "^[a-z][a-z0-9-]{1,30}$"
+    Description: Service name used in health check tags.
+  HostedZoneId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^Z[A-Z0-9]{1,31}$"
+    Description: >-
+      Public hosted zone that owns RecordName. Required for production. Empty =
+      integration-only gap: latency records are not created.
+  RecordName:
+    Type: String
+    Default: ""
+    Description: Fully qualified service hostname (must be covered by the ACM certificate in each region).
+  RegionA:
+    Type: String
+    Default: us-east-1
+    AllowedPattern: "^[a-z]{2}-[a-z]+-\\d$"
+    Description: First active region (latency routing region).
+  RegionAAlbDnsName:
+    Type: String
+    Description: LoadBalancerDnsName output of the edge stack in RegionA.
+  RegionAAlbHostedZoneId:
+    Type: String
+    Description: LoadBalancerCanonicalHostedZoneId output of the edge stack in RegionA.
+  RegionB:
+    Type: String
+    Default: us-west-2
+    AllowedPattern: "^[a-z]{2}-[a-z]+-\\d$"
+    Description: Second active region (latency routing region).
+  RegionBAlbDnsName:
+    Type: String
+    Description: LoadBalancerDnsName output of the edge stack in RegionB.
+  RegionBAlbHostedZoneId:
+    Type: String
+    Description: LoadBalancerCanonicalHostedZoneId output of the edge stack in RegionB.
+  HealthCheckProtocol:
+    Type: String
+    Default: HTTPS
+    AllowedValues: [HTTPS, HTTP]
+    Description: >-
+      Must match the regional edge (edge stack EdgeProtocol output). HTTP only
+      while integration has no certificate.
+  HealthCheckPath:
+    Type: String
+    Default: /loan-service/
+    AllowedPattern: "^/.*$"
+    Description: >-
+      Path Route 53 probes over HTTPS. Current app /loan-service/; switch to
+      /health/ready once Phase 5 lands so a region with a failed dependency
+      leaves the pool (RES-01).
+  HealthCheckIntervalSeconds:
+    Type: Number
+    Default: 30
+    AllowedValues: [10, 30]
+    Description: Route 53 health check request interval.
+  HealthCheckFailureThreshold:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 10
+    Description: Consecutive failures before a region is marked unhealthy.
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: Optional SNS topic ARN (in us-east-1) for regional health alarms.
+
+Rules:
+  RecordNeedsZone:
+    RuleCondition: !Not [!Equals [!Ref HostedZoneId, ""]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref RecordName, ""]]
+        AssertDescription: RecordName is required when HostedZoneId is set.
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
+  UseHttps: !Equals [!Ref HealthCheckProtocol, HTTPS]
+
+Resources:
+  RegionAHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      HealthCheckConfig:
+        Type: !Ref HealthCheckProtocol
+        FullyQualifiedDomainName: !Ref RegionAAlbDnsName
+        Port: !If [UseHttps, 443, 80]
+        ResourcePath: !Ref HealthCheckPath
+        EnableSNI: !If [UseHttps, true, !Ref AWS::NoValue]
+        RequestInterval: !Ref HealthCheckIntervalSeconds
+        FailureThreshold: !Ref HealthCheckFailureThreshold
+        MeasureLatency: true
+      HealthCheckTags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-${RegionA}" }
+
+  RegionBHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      HealthCheckConfig:
+        Type: !Ref HealthCheckProtocol
+        FullyQualifiedDomainName: !Ref RegionBAlbDnsName
+        Port: !If [UseHttps, 443, 80]
+        ResourcePath: !Ref HealthCheckPath
+        EnableSNI: !If [UseHttps, true, !Ref AWS::NoValue]
+        RequestInterval: !Ref HealthCheckIntervalSeconds
+        FailureThreshold: !Ref HealthCheckFailureThreshold
+        MeasureLatency: true
+      HealthCheckTags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-${RegionB}" }
+
+  RegionARecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZone
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref RecordName
+      Type: A
+      SetIdentifier: !Ref RegionA
+      Region: !Ref RegionA
+      HealthCheckId: !Ref RegionAHealthCheck
+      AliasTarget:
+        DNSName: !Ref RegionAAlbDnsName
+        HostedZoneId: !Ref RegionAAlbHostedZoneId
+        EvaluateTargetHealth: true
+
+  RegionBRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZone
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref RecordName
+      Type: A
+      SetIdentifier: !Ref RegionB
+      Region: !Ref RegionB
+      HealthCheckId: !Ref RegionBHealthCheck
+      AliasTarget:
+        DNSName: !Ref RegionBAlbDnsName
+        HostedZoneId: !Ref RegionBAlbHostedZoneId
+        EvaluateTargetHealth: true
+
+  RegionAUnhealthyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} ${RegionA} failing Route 53 health check (removed from global pool)"
+      Namespace: AWS/Route53
+      MetricName: HealthCheckStatus
+      Dimensions:
+        - { Name: HealthCheckId, Value: !Ref RegionAHealthCheck }
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  RegionBUnhealthyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} ${RegionB} failing Route 53 health check (removed from global pool)"
+      Namespace: AWS/Route53
+      MetricName: HealthCheckStatus
+      Dimensions:
+        - { Name: HealthCheckId, Value: !Ref RegionBHealthCheck }
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+Outputs:
+  ServiceHostname:
+    Condition: HasHostedZone
+    Description: Global service hostname (latency-routed across both regions).
+    Value: !Ref RecordName
+  RegionAHealthCheckId:
+    Description: Route 53 health check for RegionA.
+    Value: !Ref RegionAHealthCheck
+  RegionBHealthCheckId:
+    Description: Route 53 health check for RegionB.
+    Value: !Ref RegionBHealthCheck

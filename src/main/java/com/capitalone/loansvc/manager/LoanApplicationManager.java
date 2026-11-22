@@ -15,7 +15,8 @@ import com.capitalone.loansvc.pricing.RateAdjustmentHelper;
 import com.capitalone.loansvc.schedule.PaymentScheduleBuilder;
 import com.capitalone.loansvc.underwriting.UnderwritingEngine;
 import com.capitalone.loansvc.util.DateHelper;
-import com.capitalone.loansvc.util.MoneyHelper;
+import com.capitalone.loansvc.util.InputValidationException;
+import com.capitalone.loansvc.util.LoanInputValidator;
 import com.capitalone.loansvc.util.StringHelper;
 
 import java.math.BigDecimal;
@@ -118,21 +119,22 @@ public class LoanApplicationManager {
         return app;
     }
 
+    /**
+     * @throws InputValidationException when any field fails {@link LoanInputValidator} (SEC-02)
+     */
     public String checkEligibilityOnly(String custId, String productCode, String amountStr,
                                        String termStr, String collatValStr, String collatType) {
         LoanApplication app = new LoanApplication();
         app.setApplicationId("EL" + System.currentTimeMillis());
-        app.setCustomerId(custId);
-        app.setProductCode(productCode);
-        app.setRequestedAmount(MoneyHelper.parseMoney(amountStr));
-        try {
-            app.setTermMonths(Integer.parseInt(termStr));
-        } catch (Exception e) {
-            app.setTermMonths(36);
-        }
-        app.setCollateralValue(MoneyHelper.parseMoney(collatValStr));
-        app.setCollateralType(collatType);
-        app.setCustomer(customerManager.getCustomer(custId));
+        LoanInputValidator.LoanInput in = LoanInputValidator.validate(
+                custId, productCode, amountStr, termStr, collatType, collatValStr);
+        app.setProductCode(in.getProductCode());
+        app.setRequestedAmount(in.getRequestedAmount());
+        app.setTermMonths(in.getTermMonths());
+        app.setCollateralValue(in.getCollateralValue());
+        app.setCollateralType(in.getCollateralType());
+        app.setCustomerId(in.getCustomerId());
+        app.setCustomer(customerManager.getCustomer(in.getCustomerId()));
         if (app.getCustomer() == null) {
             return "ERR";
         }

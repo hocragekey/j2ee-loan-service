@@ -1,0 +1,249 @@
+# cfn-guard 3.x policy rules for infra/cloudformation (IAC-10).
+# Run: cfn-guard validate -r infra/guard/loan-service.guard -d infra/cloudformation
+
+let rds_clusters      = Resources.*[ Type == 'AWS::RDS::DBCluster' ]
+let rds_instances     = Resources.*[ Type == 'AWS::RDS::DBInstance' ]
+let global_clusters   = Resources.*[ Type == 'AWS::RDS::GlobalCluster' ]
+let kms_keys          = Resources.*[ Type == 'AWS::KMS::Key' ]
+let replica_keys      = Resources.*[ Type == 'AWS::KMS::ReplicaKey' ]
+let secrets           = Resources.*[ Type == 'AWS::SecretsManager::Secret' ]
+let security_groups   = Resources.*[ Type == 'AWS::EC2::SecurityGroup' ]
+let sg_ingress_rules  = Resources.*[ Type == 'AWS::EC2::SecurityGroupIngress' ]
+let ecr_repos         = Resources.*[ Type == 'AWS::ECR::Repository' ]
+let log_groups        = Resources.*[ Type == 'AWS::Logs::LogGroup' ]
+let iam_roles         = Resources.*[ Type == 'AWS::IAM::Role' ]
+let ecs_services      = Resources.*[ Type == 'AWS::ECS::Service' ]
+let load_balancers    = Resources.*[ Type == 'AWS::ElasticLoadBalancingV2::LoadBalancer' ]
+let listeners         = Resources.*[ Type == 'AWS::ElasticLoadBalancingV2::Listener' ]
+let waf_associations  = Resources.*[ Type == 'AWS::WAFv2::WebACLAssociation' ]
+let data_deletion_policy_default = Parameters.DataDeletionPolicy.Default
+let db_deletion_protection_default = Parameters.DbDeletionProtection.Default
+
+# ---------- Data: encryption, retention, no public access (PLAT-04, IAC-09, SEC) ----------
+
+rule aurora_cluster_encrypted when %rds_clusters !empty {
+    %rds_clusters.Properties {
+        StorageEncrypted == true
+            << Aurora clusters must set StorageEncrypted: true >>
+        KmsKeyId exists
+            << Aurora clusters must use a customer-managed KMS key >>
+    }
+}
+
+# DeletionPolicy is Retain, or a Ref to a parameter whose default is Retain
+# (integration may override to Snapshot; see data.yaml DataDeletionPolicy).
+rule aurora_cluster_retained when %rds_clusters !empty {
+    %rds_clusters {
+        DeletionPolicy == 'Retain' or
+        DeletionPolicy.Ref == 'DataDeletionPolicy'
+            << Aurora clusters must use DeletionPolicy Retain (or the DataDeletionPolicy parameter) >>
+        UpdateReplacePolicy == 'Retain' or
+        UpdateReplacePolicy.Ref == 'DataDeletionPolicy'
+            << Aurora clusters must use UpdateReplacePolicy Retain (or the DataDeletionPolicy parameter) >>
+    }
+}
+
+rule aurora_deletion_policy_parameter_defaults_to_retain when %data_deletion_policy_default !empty {
+    %data_deletion_policy_default == 'Retain'
+        << DataDeletionPolicy must default to Retain (production) >>
+}
+
+rule aurora_deletion_protection when %rds_clusters !empty {
+    %rds_clusters.Properties {
+        DeletionProtection == true or
+        DeletionProtection.Ref == 'DbDeletionProtection'
+            << Aurora clusters must enable DeletionProtection (or use the DbDeletionProtection parameter) >>
+    }
+}
+
+rule aurora_deletion_protection_parameter_defaults_to_true when %db_deletion_protection_default !empty {
+    %db_deletion_protection_default == 'true'
+        << DbDeletionProtection must default to "true" (production) >>
+}
+
+rule global_cluster_encrypted when %global_clusters !empty {
+    %global_clusters.Properties.StorageEncrypted == true
+        << Aurora global clusters must set StorageEncrypted: true >>
+}
+
+rule db_instances_not_public when %rds_instances !empty {
+    %rds_instances.Properties.PubliclyAccessible == false
+        << DB instances must set PubliclyAccessible: false >>
+}
+
+rule kms_keys_rotated_and_retained when %kms_keys !empty {
+    %kms_keys {
+        Properties.EnableKeyRotation == true
+            << KMS keys must enable rotation >>
+        DeletionPolicy == 'Retain'
+            << KMS keys protecting durable data must be retained >>
+    }
+}
+
+rule kms_replica_keys_retained when %replica_keys !empty {
+    %replica_keys.DeletionPolicy == 'Retain'
+        << KMS replica keys must be retained >>
+}
+
+rule secrets_use_cmk when %secrets !empty {
+    %secrets {
+        Properties.KmsKeyId exists
+            << Secrets must be encrypted with a customer-managed KMS key >>
+        Properties.SecretString !exists
+            << Secrets must be generated, never literal in the template (IAC-03) >>
+    }
+}
+
+# ---------- Network: no 0.0.0.0/0 or ::/0 ingress except 80/443 ----------
+
+let sgs_with_ingress = Resources.*[ Type == 'AWS::EC2::SecurityGroup' Properties.SecurityGroupIngress exists ]
+
+rule open_ingress_only_web_ports when %sgs_with_ingress !empty {
+    %sgs_with_ingress.Properties.SecurityGroupIngress[*] {
+        when CidrIp == '0.0.0.0/0' {
+            FromPort in [80, 443]
+                << Internet ingress is allowed only on 80 or 443 >>
+            ToPort == FromPort
+        }
+        when CidrIpv6 == '::/0' {
+            FromPort in [80, 443]
+                << Internet IPv6 ingress is allowed only on 80 or 443 >>
+            ToPort == FromPort
+        }
+    }
+}
+
+# Fn::If-wrapped rules (e.g. conditional 443) are evaluated on every branch.
+let conditional_ingress = %sgs_with_ingress.Properties.SecurityGroupIngress[ 'Fn::If' exists ].'Fn::If'[*]
+
+rule open_ingress_only_web_ports_conditional when %conditional_ingress !empty {
+    %conditional_ingress {
+        when this is_struct {
+            when CidrIp == '0.0.0.0/0' {
+                FromPort in [80, 443]
+                    << Internet ingress is allowed only on 80 or 443 >>
+            }
+            when CidrIpv6 == '::/0' {
+                FromPort in [80, 443]
+                    << Internet IPv6 ingress is allowed only on 80 or 443 >>
+            }
+        }
+    }
+}
+
+rule standalone_ingress_not_open when %sg_ingress_rules !empty {
+    %sg_ingress_rules.Properties {
+        CidrIp !exists or CidrIp != '0.0.0.0/0'
+            << Standalone ingress rules must not open 0.0.0.0/0 >>
+        CidrIpv6 !exists or CidrIpv6 != '::/0'
+            << Standalone ingress rules must not open ::/0 >>
+    }
+}
+
+# ---------- Images (PLAT-08, DEL-08) ----------
+
+rule ecr_scan_and_immutable when %ecr_repos !empty {
+    %ecr_repos.Properties {
+        ImageScanningConfiguration.ScanOnPush == true
+            << ECR repositories must scan on push >>
+        ImageTagMutability == 'IMMUTABLE'
+            << ECR repositories must use immutable tags >>
+    }
+}
+
+# ---------- Observability (PLAT-07) ----------
+
+rule log_groups_have_retention when %log_groups !empty {
+    %log_groups.Properties.RetentionInDays exists
+        << Log groups must set RetentionInDays >>
+}
+
+# ---------- IAM least privilege (IAC-04) ----------
+
+let iam_roles_with_inline = Resources.*[ Type == 'AWS::IAM::Role' Properties.Policies exists ]
+
+let iam_statements = %iam_roles_with_inline.Properties.Policies[ PolicyDocument exists ].PolicyDocument.Statement[*]
+let conditional_policies = %iam_roles_with_inline.Properties.Policies[ 'Fn::If' exists ].'Fn::If'[*]
+
+rule iam_no_full_wildcards when %iam_statements !empty {
+    %iam_statements {
+        Action[*] != '*'
+            << IAM statements must not allow Action "*" >>
+        when Resource == '*' {
+            Action[*] !in ['iam:*', 's3:*', 'kms:*', 'secretsmanager:*', 'rds:*', 'ec2:*', 'ecs:*']
+                << Service-wide wildcards are not allowed on Resource "*" >>
+        }
+    }
+}
+
+# Inline policies wrapped in Fn::If (e.g. the optional OTel policy).
+rule iam_no_full_wildcards_conditional when %conditional_policies !empty {
+    %conditional_policies {
+        when this is_struct {
+            when PolicyDocument exists {
+                PolicyDocument.Statement[*].Action[*] != '*'
+                    << IAM statements must not allow Action "*" >>
+            }
+        }
+    }
+}
+
+let roles_with_managed = Resources.*[ Type == 'AWS::IAM::Role' Properties.ManagedPolicyArns exists ]
+
+rule iam_no_admin_managed_policy when %roles_with_managed !empty {
+    %roles_with_managed.Properties.ManagedPolicyArns[*] {
+        when this is_string {
+            this != /AdministratorAccess|PowerUserAccess/
+                << Roles must not attach administrator or power-user managed policies >>
+        }
+        when this is_struct {
+            'Fn::Sub' != /AdministratorAccess|PowerUserAccess/
+                << Roles must not attach administrator or power-user managed policies >>
+        }
+    }
+}
+
+# ---------- Compute (PLAT-01, RES-11) ----------
+
+rule ecs_service_private_with_circuit_breaker when %ecs_services !empty {
+    %ecs_services.Properties {
+        NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp == 'DISABLED'
+            << ECS tasks must not get public IPs >>
+        DeploymentConfiguration.DeploymentCircuitBreaker.Enable == true
+        DeploymentConfiguration.DeploymentCircuitBreaker.Rollback == true
+            << ECS services must enable the deployment circuit breaker with rollback >>
+    }
+}
+
+# ---------- Edge (PLAT-02) ----------
+
+# HTTP listeners redirect to HTTPS. The only exception is a listener whose
+# actions are Fn::If [HasCertificate, <redirect>, <forward>] (integration-only
+# HTTP when no certificate exists, documented gap).
+rule http_listeners_redirect when %listeners !empty {
+    %listeners[ Properties.Protocol == 'HTTP' ] {
+        Properties.DefaultActions[*].Type == 'redirect' or
+        Properties.DefaultActions.'Fn::If'[0] == 'HasCertificate'
+            << HTTP listeners must redirect to HTTPS (HasCertificate-gated integration exception only) >>
+    }
+}
+
+let conditional_http_listeners = %listeners[ Properties.Protocol == 'HTTP' Properties.DefaultActions.'Fn::If' exists ]
+
+rule http_listeners_redirect_when_certificate when %conditional_http_listeners !empty {
+    %conditional_http_listeners.Properties.DefaultActions.'Fn::If'[1][*].Type == 'redirect'
+        << With a certificate, HTTP listeners must redirect to HTTPS >>
+}
+
+rule https_listeners_modern_tls when %listeners !empty {
+    %listeners[ Properties.Protocol == 'HTTPS' ].Properties.SslPolicy {
+        this == /^ELBSecurityPolicy-TLS13-/ or
+        Ref exists
+            << HTTPS listeners must use a TLS 1.3 policy >>
+    }
+}
+
+rule public_alb_has_waf when %load_balancers !empty {
+    %waf_associations !empty
+        << Templates with a load balancer must associate a WAF web ACL >>
+}

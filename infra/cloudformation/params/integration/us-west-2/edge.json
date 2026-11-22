@@ -1,0 +1,11 @@
+{
+  "EnvironmentName": "integration",
+  "ServiceName": "loan-svc",
+  "NetworkStackName": "loan-svc-integration-network",
+  "CertificateArn": "",
+  "ContainerPort": "8080",
+  "HealthCheckPath": "/loan-service/",
+  "HealthCheckMatcher": "200",
+  "WafLogRetentionDays": "14",
+  "LoadBalancerDeletionProtection": "false"
+}

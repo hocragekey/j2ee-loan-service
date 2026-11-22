@@ -1,0 +1,6 @@
+{
+  "RepositoryName": "loan-svc-integration",
+  "IsReplicationSource": "false",
+  "UntaggedImageExpiryDays": "7",
+  "MaxTaggedImages": "50"
+}

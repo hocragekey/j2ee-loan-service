@@ -1,0 +1,43 @@
+name: cfn
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/cfn.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/cfn.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: cfn-lint + cfn-guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CFN_LINT_VERSION: "1.60.1"
+      CFN_GUARD_VERSION: "3.3.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cfn-lint
+        run: pip install "cfn-lint==${CFN_LINT_VERSION}" pyyaml
+
+      - name: Install cfn-guard
+        run: |
+          curl -fsSL -o /tmp/cfn-guard.tar.gz \
+            "https://github.com/aws-cloudformation/cloudformation-guard/releases/download/${CFN_GUARD_VERSION}/cfn-guard-v3-x86_64-ubuntu-latest.tar.gz"
+          tar -xzf /tmp/cfn-guard.tar.gz -C /tmp
+          echo "/tmp/cfn-guard-v3-x86_64-ubuntu-latest" >> "$GITHUB_PATH"
+
+      - name: Validate templates, guard rules and parameter files
+        run: infra/scripts/validate.sh

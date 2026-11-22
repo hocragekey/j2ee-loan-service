@@ -1,0 +1,11 @@
+{
+  "EnvironmentName": "integration",
+  "ServiceName": "loan-svc",
+  "HostedZoneId": "",
+  "RecordName": "",
+  "RegionA": "us-east-1",
+  "RegionB": "us-west-2",
+  "HealthCheckPath": "/loan-service/",
+  "HealthCheckIntervalSeconds": "30",
+  "HealthCheckFailureThreshold": "3"
+}

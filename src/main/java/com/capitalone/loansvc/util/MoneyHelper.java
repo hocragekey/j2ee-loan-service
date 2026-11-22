@@ -1,9 +1,13 @@
 package com.capitalone.loansvc.util;
 
+import org.apache.log4j.Logger;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 public class MoneyHelper {
+
+    private static final Logger LOG = Logger.getLogger(MoneyHelper.class);
 
     public static BigDecimal round2(BigDecimal v) {
         if (v == null) {
@@ -26,7 +30,7 @@ public class MoneyHelper {
         try {
             return new BigDecimal(s.trim().replace(",", ""));
         } catch (Exception e) {
-            System.out.println("MoneyHelper bad money: " + s);
+            LOG.warn("MoneyHelper unparseable money value (length=" + s.length() + ")");
             return BigDecimal.ZERO;
         }
     }

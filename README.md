@@ -94,6 +94,10 @@ H2 is in-process memory (`DB_CLOSE_DELAY=-1`). Restarting Tomcat clears data unl
 
 [`deploy/ec2-tomcat-setup.sh`](deploy/ec2-tomcat-setup.sh) remains as the older “scp a script onto the box” path if Ansible is unavailable.
 
+## Target AWS infrastructure (CloudFormation)
+
+The multi-region target (ECS/Fargate + ECR, ALB with TLS and WAF, Aurora PostgreSQL Global Database with write forwarding, Route 53 latency routing) is templated in [`infra/`](infra/README.md): stack order, parameters, integration deploy commands, and local validation (`infra/scripts/validate.sh`). These templates are not deployed by this repository; the legacy EC2/Tomcat flow above stays in place until cutover.
+
 ## Container
 
 Interim runtime for the current WAR (`DEL-08`, `PLAT-01`): [`Dockerfile`](Dockerfile) builds and tests with Maven 3.9 + Amazon Corretto 8, then runs Tomcat 9 on the Amazon Corretto 8 JRE (Amazon Linux 2023) as non-root UID 10001. Base images and the Tomcat tarball are pinned by digest / SHA-512. Requires Docker 23+ (BuildKit).
@@ -120,8 +124,8 @@ Account `118938645536`, repository `loan-svc-integration`, primary region `us-ea
 GIT_SHA=$(git rev-parse HEAD)
 ECR=118938645536.dkr.ecr.us-east-1.amazonaws.com
 
-# One-time, if the repositories don't exist yet (Phase 8 CloudFormation will own them).
-# Pre-creating us-west-2 keeps immutable tags + scan-on-push on the replica too.
+# One-time, only if the `ecr` stacks from infra/ aren't deployed yet (they own the
+# repositories). Pre-creating us-west-2 keeps immutable tags + scan-on-push on the replica too.
 for r in us-east-1 us-west-2; do
   aws ecr create-repository --region $r --repository-name loan-svc-integration \
     --image-tag-mutability IMMUTABLE --image-scanning-configuration scanOnPush=true
@@ -130,6 +134,7 @@ done
 # One-time: replicate us-east-1 -> us-west-2. This call REPLACES the registry's whole
 # replication configuration, so check `aws ecr describe-registry --region us-east-1` first
 # and merge any existing rules. Only images pushed after this is set are replicated.
+# Without replication, push the same tag to both regions instead (infra/README.md#ecr-replication).
 aws ecr put-replication-configuration --region us-east-1 --replication-configuration \
   '{"rules":[{"destinations":[{"region":"us-west-2","registryId":"118938645536"}],"repositoryFilters":[{"filter":"loan-svc-integration","filterType":"PREFIX_MATCH"}]}]}'
 

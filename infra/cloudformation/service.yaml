@@ -1,0 +1,600 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  loan-service regional compute (one stack per active region). ECS cluster on
+  Fargate, task definition with least-privilege task and execution roles,
+  CloudWatch log group with retention, SSM parameters for non-secret config,
+  Secrets Manager injection for DB credentials, optional AWS Distro for
+  OpenTelemetry (X-Ray) sidecar, ECS service across two AZs with deployment
+  circuit breaker and rollback, target-tracking autoscaling on CPU and ALB
+  requests per target, and CloudWatch alarms. Controls: PLAT-01, PLAT-06,
+  PLAT-07, PLAT-10, RES-07, RES-08, RES-11, IAC-04, IAC-08.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Environment and stack wiring }
+        Parameters:
+          - EnvironmentName
+          - ServiceName
+          - RegionRole
+          - NetworkStackName
+          - EdgeStackName
+          - DataStackName
+          - EcrStackName
+      - Label: { default: Container }
+        Parameters:
+          - ImageUri
+          - ContainerPort
+          - TaskCpu
+          - TaskMemory
+          - CpuArchitecture
+          - ReadonlyRootFilesystem
+          - StopTimeoutSeconds
+          - HealthCheckGracePeriodSeconds
+      - Label: { default: Scaling }
+        Parameters:
+          - DesiredCount
+          - MinCapacity
+          - MaxCapacity
+          - CpuTargetPercent
+          - RequestsPerTargetTarget
+      - Label: { default: Observability }
+        Parameters:
+          - LogRetentionDays
+          - EnableOtelSidecar
+          - OtelCollectorImage
+          - AlarmTopicArn
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    AllowedValues: [integration, dev, staging, prod]
+    Description: Deployment environment name. Names are prefixed ServiceName-EnvironmentName (e.g. loan-svc-integration).
+  ServiceName:
+    Type: String
+    Default: loan-service
+    AllowedPattern: "^[a-z][a-z0-9-]{1,30}$"
+    Description: Service name used in resource names and the SSM parameter path.
+  RegionRole:
+    Type: String
+    AllowedValues: [primary, secondary]
+    Description: >-
+      Data-plane role of this region (primary = global DB writer; secondary =
+      write forwarding). Passed to the app as config only; both regions serve
+      traffic (active-active).
+  NetworkStackName:
+    Type: String
+    Description: network.yaml stack name in this region.
+  EdgeStackName:
+    Type: String
+    Description: edge.yaml stack name in this region.
+  DataStackName:
+    Type: String
+    Description: data.yaml stack name in this region.
+  EcrStackName:
+    Type: String
+    Description: ecr.yaml stack name in this region (scopes the image pull permission).
+  ImageUri:
+    Type: String
+    AllowedPattern: "^[a-z0-9.-]+/[a-z0-9._/-]+(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})$"
+    ConstraintDescription: Must be a full image URI with an immutable tag or digest.
+    Description: >-
+      Full container image URI with an immutable tag or digest, normally this
+      region's ECR repository (e.g. <account>.dkr.ecr.<region>.amazonaws.com/<repo>:<git-sha>). Never "latest".
+  ContainerPort:
+    Type: Number
+    Default: 8080
+    MinValue: 1024
+    MaxValue: 65535
+    Description: Port the container listens on (must match edge.yaml).
+  TaskCpu:
+    Type: String
+    Default: "1024"
+    AllowedValues: ["512", "1024", "2048", "4096"]
+    Description: Fargate task CPU units.
+  TaskMemory:
+    Type: String
+    Default: "2048"
+    AllowedValues: ["1024", "2048", "3072", "4096", "8192"]
+    Description: Fargate task memory (MiB); must be valid for TaskCpu.
+  CpuArchitecture:
+    Type: String
+    Default: X86_64
+    AllowedValues: [X86_64, ARM64]
+    Description: Must match the image architecture.
+  ReadonlyRootFilesystem:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Set "true" once the image writes only to mounted volumes (the /tmp volume
+      is always mounted). Default "false" until the container image confirms it.
+  StopTimeoutSeconds:
+    Type: Number
+    Default: 30
+    MinValue: 2
+    MaxValue: 120
+    Description: Time between SIGTERM and SIGKILL for graceful shutdown (RES-04).
+  HealthCheckGracePeriodSeconds:
+    Type: Number
+    Default: 60
+    MinValue: 0
+    Description: Time ECS ignores ALB health checks after a task starts.
+  DesiredCount:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    Description: Initial task count in this region. Production >= 2 (one per AZ); 1 is integration/demo only.
+  MinCapacity:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    Description: Autoscaling minimum. Production >= 2 (one task per AZ, RES-11); 1 is integration/demo only.
+  MaxCapacity:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    Description: Autoscaling maximum. Size each region to absorb the other region's traffic.
+  CpuTargetPercent:
+    Type: Number
+    Default: 60
+    MinValue: 10
+    MaxValue: 90
+    Description: Target average CPU utilization for scaling.
+  RequestsPerTargetTarget:
+    Type: Number
+    Default: 500
+    MinValue: 10
+    Description: Target ALB requests per task per minute for scaling.
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [7, 14, 30, 60, 90, 180, 365, 400, 731]
+    Description: CloudWatch Logs retention for application logs.
+  EnableOtelSidecar:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Run the AWS Distro for OpenTelemetry collector sidecar exporting traces to X-Ray.
+  OtelCollectorImage:
+    Type: String
+    Default: public.ecr.aws/aws-observability/aws-otel-collector:v0.43.1
+    Description: ADOT collector image (pinned version).
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: Optional SNS topic ARN for alarm notifications.
+
+Conditions:
+  OtelEnabled: !Equals [!Ref EnableOtelSidecar, "true"]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+
+Resources:
+  # ---------- Non-secret configuration (PLAT-06) ----------
+  ConfigDbHost:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ServiceName}-${EnvironmentName}/db/host"
+      Type: String
+      Description: Regional Aurora endpoint (primary writer; secondary reader endpoint with write forwarding).
+      Value: !ImportValue { "Fn::Sub": "${DataStackName}-AppEndpoint" }
+
+  ConfigDbPort:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ServiceName}-${EnvironmentName}/db/port"
+      Type: String
+      Description: Aurora PostgreSQL port.
+      Value: !ImportValue { "Fn::Sub": "${DataStackName}-ClusterPort" }
+
+  ConfigDbName:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ServiceName}-${EnvironmentName}/db/name"
+      Type: String
+      Description: Database owned by the service.
+      Value: !ImportValue { "Fn::Sub": "${DataStackName}-DatabaseName" }
+
+  ConfigRegionRole:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ServiceName}-${EnvironmentName}/app/region-role"
+      Type: String
+      Description: primary or secondary data-plane role of this region (config only, never business logic).
+      Value: !Ref RegionRole
+
+  # ---------- Logs ----------
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "${ServiceName}-${EnvironmentName}/ecs"
+      RetentionInDays: !Ref LogRetentionDays
+
+  # ---------- IAM (IAC-04 / SEC-05) ----------
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: ECS agent role - pull this service's image, write its logs, read its DB secret and SSM config.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { "aws:SourceAccount": !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: execution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EcrAuthToken
+                # ecr:GetAuthorizationToken does not support resource-level permissions.
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: PullServiceImage
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !ImportValue { "Fn::Sub": "${EcrStackName}-RepositoryArn" }
+              - Sid: WriteServiceLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${AppLogGroup.Arn}:*"
+              - Sid: ReadDbSecret
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !ImportValue { "Fn::Sub": "${DataStackName}-DbSecretArn" }
+              - Sid: DecryptDbSecret
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: !ImportValue { "Fn::Sub": "${DataStackName}-DataKeyArn" }
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub "secretsmanager.${AWS::Region}.amazonaws.com"
+              - Sid: ReadServiceConfig
+                Effect: Allow
+                Action: ssm:GetParameters
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ServiceName}-${EnvironmentName}/*"
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: loan-service application role - read own SSM config; X-Ray/OTel export when the sidecar is enabled.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { "aws:SourceAccount": !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: app-config
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadServiceConfig
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ServiceName}-${EnvironmentName}"
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ServiceName}-${EnvironmentName}/*"
+        - !If
+          - OtelEnabled
+          - PolicyName: otel-export
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Sid: XRayExport
+                  # X-Ray trace APIs do not support resource-level permissions.
+                  Effect: Allow
+                  Action:
+                    - xray:PutTraceSegments
+                    - xray:PutTelemetryRecords
+                    - xray:GetSamplingRules
+                    - xray:GetSamplingTargets
+                    - xray:GetSamplingStatisticSummaries
+                  Resource: "*"
+                - Sid: EmfMetricsLogs
+                  Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                    - logs:DescribeLogStreams
+                  Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/ecs/application/metrics*"
+          - !Ref AWS::NoValue
+
+  # ---------- Compute ----------
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ServiceName}-${EnvironmentName}"
+      CapacityProviders: [FARGATE]
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ServiceName}-${EnvironmentName}"
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      RuntimePlatform:
+        OperatingSystemFamily: LINUX
+        CpuArchitecture: !Ref CpuArchitecture
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      Volumes:
+        - Name: tmp
+      ContainerDefinitions:
+        - Name: app
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Protocol: tcp
+          ReadonlyRootFilesystem: !Ref ReadonlyRootFilesystem
+          StopTimeout: !Ref StopTimeoutSeconds
+          LinuxParameters:
+            InitProcessEnabled: true
+          MountPoints:
+            - SourceVolume: tmp
+              ContainerPath: /tmp
+          Environment:
+            - { Name: APP_ENV, Value: !Ref EnvironmentName }
+            - { Name: APP_REGION, Value: !Ref AWS::Region }
+            - { Name: SERVER_PORT, Value: !Ref ContainerPort }
+            - { Name: CONFIG_SSM_PATH, Value: !Sub "/${ServiceName}-${EnvironmentName}/" }
+            - !If
+              - OtelEnabled
+              - { Name: OTEL_EXPORTER_OTLP_ENDPOINT, Value: "http://localhost:4317" }
+              - !Ref AWS::NoValue
+            - !If
+              - OtelEnabled
+              - { Name: OTEL_SERVICE_NAME, Value: !Ref ServiceName }
+              - !Ref AWS::NoValue
+          Secrets:
+            - Name: DB_HOST
+              ValueFrom: !Ref ConfigDbHost
+            - Name: DB_PORT
+              ValueFrom: !Ref ConfigDbPort
+            - Name: DB_NAME
+              ValueFrom: !Ref ConfigDbName
+            - Name: APP_REGION_ROLE
+              ValueFrom: !Ref ConfigRegionRole
+            - Name: DB_USERNAME
+              ValueFrom: !Sub
+                - "${SecretArn}:username::"
+                - SecretArn: !ImportValue { "Fn::Sub": "${DataStackName}-DbSecretArn" }
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub
+                - "${SecretArn}:password::"
+                - SecretArn: !ImportValue { "Fn::Sub": "${DataStackName}-DbSecretArn" }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AppLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: app
+              mode: non-blocking
+              max-buffer-size: 25m
+        - !If
+          - OtelEnabled
+          - Name: otel-collector
+            Image: !Ref OtelCollectorImage
+            Essential: false
+            Command: ["--config=/etc/ecs/ecs-default-config.yaml"]
+            ReadonlyRootFilesystem: true
+            LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref AppLogGroup
+                awslogs-region: !Ref AWS::Region
+                awslogs-stream-prefix: otel
+          - !Ref AWS::NoValue
+
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub "${ServiceName}-${EnvironmentName}"
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      DesiredCount: !Ref DesiredCount
+      HealthCheckGracePeriodSeconds: !Ref HealthCheckGracePeriodSeconds
+      EnableExecuteCommand: false
+      EnableECSManagedTags: true
+      PropagateTags: SERVICE
+      DeploymentController: { Type: ECS }
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: !Split [",", !ImportValue { "Fn::Sub": "${NetworkStackName}-AppSubnetIds" }]
+          SecurityGroups:
+            - !ImportValue { "Fn::Sub": "${NetworkStackName}-AppSecurityGroupId" }
+      LoadBalancers:
+        - ContainerName: app
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !ImportValue { "Fn::Sub": "${EdgeStackName}-TargetGroupArn" }
+      Tags:
+        - { Key: Environment, Value: !Ref EnvironmentName }
+        - { Key: RegionRole, Value: !Ref RegionRole }
+
+  # ---------- Autoscaling (RES-07, per region) ----------
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      ResourceId: !Sub "service/${Cluster}/${Service.Name}"
+      MinCapacity: !Ref MinCapacity
+      MaxCapacity: !Ref MaxCapacity
+
+  CpuScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${ServiceName}-${EnvironmentName}-cpu"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: !Ref CpuTargetPercent
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  RequestScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${ServiceName}-${EnvironmentName}-requests"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ALBRequestCountPerTarget
+          ResourceLabel: !Sub
+            - "${Lb}/${Tg}"
+            - Lb: !ImportValue { "Fn::Sub": "${EdgeStackName}-LoadBalancerFullName" }
+              Tg: !ImportValue { "Fn::Sub": "${EdgeStackName}-TargetGroupFullName" }
+        TargetValue: !Ref RequestsPerTargetTarget
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  # ---------- Alarms (PLAT-07) ----------
+  Target5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} target 5xx responses (${AWS::Region})"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !ImportValue { "Fn::Sub": "${EdgeStackName}-LoadBalancerFullName" }
+        - Name: TargetGroup
+          Value: !ImportValue { "Fn::Sub": "${EdgeStackName}-TargetGroupFullName" }
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  Elb5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} load balancer 5xx responses (${AWS::Region})"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_ELB_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !ImportValue { "Fn::Sub": "${EdgeStackName}-LoadBalancerFullName" }
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  UnhealthyTargetsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} unhealthy targets (${AWS::Region})"
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !ImportValue { "Fn::Sub": "${EdgeStackName}-LoadBalancerFullName" }
+        - Name: TargetGroup
+          Value: !ImportValue { "Fn::Sub": "${EdgeStackName}-TargetGroupFullName" }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  NoHealthyTargetsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} no healthy targets - region out of the global pool (${AWS::Region})"
+      Namespace: AWS/ApplicationELB
+      MetricName: HealthyHostCount
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !ImportValue { "Fn::Sub": "${EdgeStackName}-LoadBalancerFullName" }
+        - Name: TargetGroup
+          Value: !ImportValue { "Fn::Sub": "${EdgeStackName}-TargetGroupFullName" }
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  ServiceCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} ECS service CPU above 85% (${AWS::Region})"
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - { Name: ClusterName, Value: !Ref Cluster }
+        - { Name: ServiceName, Value: !GetAtt Service.Name }
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+Outputs:
+  ClusterName:
+    Description: ECS cluster name.
+    Value: !Ref Cluster
+    Export: { Name: !Sub "${AWS::StackName}-ClusterName" }
+  ServiceName:
+    Description: ECS service name.
+    Value: !GetAtt Service.Name
+    Export: { Name: !Sub "${AWS::StackName}-ServiceName" }
+  TaskRoleArn:
+    Description: Application task role ARN.
+    Value: !GetAtt TaskRole.Arn
+  TaskExecutionRoleArn:
+    Description: Task execution role ARN.
+    Value: !GetAtt TaskExecutionRole.Arn
+  LogGroupName:
+    Description: CloudWatch Logs group for the application.
+    Value: !Ref AppLogGroup
+  ConfigPath:
+    Description: SSM Parameter Store path holding non-secret config.
+    Value: !Sub "/${ServiceName}-${EnvironmentName}/"
