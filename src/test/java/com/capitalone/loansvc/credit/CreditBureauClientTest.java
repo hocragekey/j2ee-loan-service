@@ -1,7 +1,8 @@
 package com.capitalone.loansvc.credit;
 
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.Customer;
-import com.capitalone.loansvc.testsupport.ConfigHolderRule;
+import com.capitalone.loansvc.testsupport.LoanPropertiesRule;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.testsupport.TestData;
 import org.junit.Before;
@@ -14,9 +15,9 @@ import static org.junit.Assert.assertEquals;
 public class CreditBureauClientTest {
 
     @Rule
-    public final ConfigHolderRule config = new ConfigHolderRule();
+    public final LoanPropertiesRule config = new LoanPropertiesRule();
 
-    private final CreditBureauClient client = new CreditBureauClient();
+    private final CreditBureauClient client = TestBeans.get(CreditBureauClient.class);
     private final BureauResponseParser parser = new BureauResponseParser();
 
     @Before

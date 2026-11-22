@@ -1,5 +1,6 @@
 package com.capitalone.loansvc.underwriting;
 
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.model.UnderwritingDecision;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
@@ -18,7 +19,7 @@ import static org.junit.Assert.assertTrue;
 /** Characterization of UnderwritingEngine decision codes A/D/R/E. */
 public class UnderwritingEngineTest {
 
-    private final UnderwritingEngine engine = new UnderwritingEngine();
+    private final UnderwritingEngine engine = TestBeans.get(UnderwritingEngine.class);
 
     @Before
     public void setUp() {

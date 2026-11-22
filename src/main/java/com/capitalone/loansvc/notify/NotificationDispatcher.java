@@ -1,21 +1,30 @@
 package com.capitalone.loansvc.notify;
 
 import com.capitalone.loansvc.audit.AuditLogger;
+import com.capitalone.loansvc.config.LoanProperties;
 import com.capitalone.loansvc.model.LoanApplication;
-import com.capitalone.loansvc.util.ConfigHolder;
 import com.capitalone.loansvc.util.LogRedactor;
 import com.capitalone.loansvc.util.StringHelper;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
+@Component
 public class NotificationDispatcher {
 
-    private static final Logger LOG = Logger.getLogger(NotificationDispatcher.class);
+    private static final Logger LOG = LoggerFactory.getLogger(NotificationDispatcher.class);
 
     private final EmailTemplateUtil templates = new EmailTemplateUtil();
-    private final AuditLogger auditLogger = new AuditLogger();
+    private final AuditLogger auditLogger;
+    private final LoanProperties properties;
+
+    public NotificationDispatcher(AuditLogger auditLogger, LoanProperties properties) {
+        this.auditLogger = auditLogger;
+        this.properties = properties;
+    }
 
     public void notifyDecision(LoanApplication app) {
-        if (!"Y".equalsIgnoreCase(ConfigHolder.get("notify.enabled", "Y"))) {
+        if (!"Y".equalsIgnoreCase(properties.getNotifyEnabled())) {
             return;
         }
         if (app == null) {

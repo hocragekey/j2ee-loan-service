@@ -2,18 +2,32 @@ package com.capitalone.loansvc.db;
 
 import com.capitalone.loansvc.model.LoanApplication;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Repository;
+
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 
+@Repository
 public class LoanDao {
+
+    private static final Logger LOG = LoggerFactory.getLogger(LoanDao.class);
+
+    private final DataSource dataSource;
+
+    public LoanDao(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
 
     public void insert(LoanApplication app) {
         Connection c = null;
         PreparedStatement ps = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement(
                     "INSERT INTO LN_APPL (APPL_ID, CUST_ID, PROD_CD, REQ_AMT, TERM_MOS, PURPOSE_CD, " +
                     "COLLAT_VAL, COLLAT_TYPE, FICO_SCR, LTV_PCT, DTI_PCT, BASE_RATE, FINAL_RATE, " +
@@ -22,11 +36,11 @@ public class LoanDao {
             bind(ps, app);
             ps.executeUpdate();
         } catch (Exception e) {
-            System.out.println("LoanDao.insert ERR: " + e.getMessage());
+            LOG.warn("LoanDao.insert ERR: " + e.getMessage());
             throw new RuntimeException(e);
         } finally {
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 
@@ -34,7 +48,7 @@ public class LoanDao {
         Connection c = null;
         PreparedStatement ps = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement(
                     "UPDATE LN_APPL SET CUST_ID=?, PROD_CD=?, REQ_AMT=?, TERM_MOS=?, PURPOSE_CD=?, " +
                     "COLLAT_VAL=?, COLLAT_TYPE=?, FICO_SCR=?, LTV_PCT=?, DTI_PCT=?, BASE_RATE=?, FINAL_RATE=?, " +
@@ -62,10 +76,10 @@ public class LoanDao {
             ps.setString(17, app.getApplicationId());
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("LoanDao.update failed", e);
         } finally {
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 
@@ -74,7 +88,7 @@ public class LoanDao {
         PreparedStatement ps = null;
         ResultSet rs = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement("SELECT * FROM LN_APPL WHERE APPL_ID = ?");
             ps.setString(1, applId);
             rs = ps.executeQuery();
@@ -105,9 +119,9 @@ public class LoanDao {
         } catch (Exception e) {
             return null;
         } finally {
-            DbUtil.closeQuietly(rs);
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(rs);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 
@@ -116,7 +130,7 @@ public class LoanDao {
         PreparedStatement ps = null;
         ResultSet rs = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement("SELECT BASE_RATE FROM RATE_TBL WHERE PROD_CD = ?");
             ps.setString(1, prodCd);
             rs = ps.executeQuery();
@@ -125,12 +139,12 @@ public class LoanDao {
             }
             return null;
         } catch (Exception e) {
-            System.out.println("rate lookup failed for " + prodCd);
+            LOG.warn("rate lookup failed for " + prodCd);
             return null;
         } finally {
-            DbUtil.closeQuietly(rs);
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(rs);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 

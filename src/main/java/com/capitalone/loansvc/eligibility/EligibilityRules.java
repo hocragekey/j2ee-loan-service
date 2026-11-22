@@ -1,11 +1,12 @@
 package com.capitalone.loansvc.eligibility;
 
 import com.capitalone.loansvc.audit.AuditLogger;
+import com.capitalone.loansvc.config.LoanProperties;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.model.LoanApplication;
-import com.capitalone.loansvc.util.ConfigHolder;
 import com.capitalone.loansvc.util.MoneyHelper;
 import com.capitalone.loansvc.util.StringHelper;
+import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -14,14 +15,21 @@ import java.math.RoundingMode;
  * Static, side-effecting eligibility logic — primary modernization extraction target.
  * Mutates the application and writes audit rows while deciding.
  */
+@Component
 public class EligibilityRules {
 
-    private static final AuditLogger AUDIT = new AuditLogger();
+    private final AuditLogger auditLogger;
+    private final LoanProperties properties;
+
+    public EligibilityRules(AuditLogger auditLogger, LoanProperties properties) {
+        this.auditLogger = auditLogger;
+        this.properties = properties;
+    }
 
     /**
      * @return eligibility code: Y, N, WL, or ERR
      */
-    public static String evaluate(LoanApplication app) {
+    public String evaluate(LoanApplication app) {
         if (app == null) {
             return "ERR";
         }
@@ -42,27 +50,27 @@ public class EligibilityRules {
         BigDecimal proposedPmt = estimatePayment(app);
         BigDecimal dti = MoneyHelper.pct(monthlyDebt.add(proposedPmt), monthlyIncome);
         app.setDtiPct(dti);
-        AUDIT.log(app.getApplicationId(), "ELIG", "dti=" + dti);
+        auditLogger.log(app.getApplicationId(), "ELIG", "dti=" + dti);
 
         String prod = StringHelper.upper(app.getProductCode());
-        BigDecimal dtiLimit = new BigDecimal(ConfigHolder.get("dti.default", "43"));
+        BigDecimal dtiLimit = new BigDecimal(properties.getDtiDefault());
         if ("HELOC".equals(prod)) {
-            dtiLimit = new BigDecimal(ConfigHolder.get("dti.heloc", "45"));
+            dtiLimit = new BigDecimal(properties.getDtiHeloc());
         }
 
-        int ficoFloor = ConfigHolder.getInt("fico.floor", 620);
+        int ficoFloor = properties.ficoFloorOrDefault();
         Integer fico = app.getFicoScore();
         if (fico == null || fico < ficoFloor) {
             app.setEligibilityCode("N");
             app.setLastError("fico below floor");
-            AUDIT.log(app.getApplicationId(), "ELIG", "decline fico=" + fico);
+            auditLogger.log(app.getApplicationId(), "ELIG", "decline fico=" + fico);
             return "N";
         }
 
         if (dti.compareTo(dtiLimit) > 0) {
             app.setEligibilityCode("N");
             app.setLastError("dti exceeds limit " + dtiLimit);
-            AUDIT.log(app.getApplicationId(), "ELIG", "decline dti");
+            auditLogger.log(app.getApplicationId(), "ELIG", "decline dti");
             return "N";
         }
 
@@ -71,7 +79,7 @@ public class EligibilityRules {
             BigDecimal ltv = app.getLtvPct() == null ? BigDecimal.ZERO : app.getLtvPct();
             if ("PERSONAL".equals(prod)) {
                 // unsecured mid-fico path still allowed if DTI ok — quirky
-                AUDIT.log(app.getApplicationId(), "ELIG", "mid-fico personal exception");
+                auditLogger.log(app.getApplicationId(), "ELIG", "mid-fico personal exception");
             } else if (ltv.compareTo(new BigDecimal("80.0000")) > 0) {
                 app.setEligibilityCode("N");
                 app.setLastError("mid-fico ltv>80");
@@ -87,7 +95,7 @@ public class EligibilityRules {
         }
 
         app.setEligibilityCode("Y");
-        AUDIT.log(app.getApplicationId(), "ELIG", "pass");
+        auditLogger.log(app.getApplicationId(), "ELIG", "pass");
         return "Y";
     }
 

@@ -1,6 +1,6 @@
 package com.capitalone.loansvc.manager;
 
-import com.capitalone.loansvc.db.DbUtil;
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
@@ -21,7 +21,7 @@ import static org.junit.Assert.assertSame;
 /** Characterization of required-document checklist combinations and DOC_CHKLIST persistence. */
 public class DocumentManagerTest {
 
-    private final DocumentManager docs = new DocumentManager();
+    private final DocumentManager docs = TestBeans.get(DocumentManager.class);
 
     @Before
     public void setUp() {
@@ -95,7 +95,7 @@ public class DocumentManagerTest {
 
     private static List<String> persistedRows(String applId) throws Exception {
         List<String> rows = new ArrayList<String>();
-        Connection c = DbUtil.getConnection();
+        Connection c = LegacyTestState.connection();
         try {
             PreparedStatement ps = c.prepareStatement(
                     "SELECT DOC_TYPE, REQ_FLG, RCVD_FLG FROM DOC_CHKLIST WHERE APPL_ID = ? ORDER BY DOC_ID");

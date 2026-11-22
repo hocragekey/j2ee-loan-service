@@ -1,5 +1,6 @@
 package com.capitalone.loansvc.collateral;
 
+import org.springframework.stereotype.Component;
 import com.capitalone.loansvc.model.CollateralItem;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.util.MoneyHelper;
@@ -7,6 +8,7 @@ import com.capitalone.loansvc.util.StringHelper;
 
 import java.math.BigDecimal;
 
+@Component
 public class CollateralValuator {
 
     private final LtvCalculator ltvCalculator = new LtvCalculator();

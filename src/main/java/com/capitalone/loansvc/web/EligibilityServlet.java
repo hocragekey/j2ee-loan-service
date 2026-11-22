@@ -1,16 +1,22 @@
 package com.capitalone.loansvc.web;
 
-import com.capitalone.loansvc.util.AppContext;
+import com.capitalone.loansvc.manager.LoanApplicationManager;
 import com.capitalone.loansvc.util.InputValidationException;
 import com.capitalone.loansvc.util.StringHelper;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 public class EligibilityServlet extends HttpServlet {
+
+    private final transient LoanApplicationManager loanApplicationManager;
+
+    public EligibilityServlet(LoanApplicationManager loanApplicationManager) {
+        this.loanApplicationManager = loanApplicationManager;
+    }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
@@ -37,7 +43,7 @@ public class EligibilityServlet extends HttpServlet {
 
         String code;
         try {
-            code = AppContext.getLoanApplicationManager().checkEligibilityOnly(
+            code = loanApplicationManager.checkEligibilityOnly(
                     custId, product, amount, term, collatVal, collatType);
         } catch (InputValidationException e) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);

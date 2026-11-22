@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, devin/1795380000-demo-combined]
   push:
-    branches: [main]
+    branches: [main, devin/1795380000-demo-combined]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: mvn verify (Java 8)
+    name: mvn verify (Java 21)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -25,11 +25,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up JDK 8
+      - name: Set up JDK 21
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '21'
           cache: maven
 
       - name: Build and test

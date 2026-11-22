@@ -4,12 +4,18 @@ import com.capitalone.loansvc.audit.ComplianceEventWriter;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.model.UnderwritingDecision;
 import com.capitalone.loansvc.util.StringHelper;
+import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 
+@Component
 public class UnderwritingEngine {
 
-    private final ComplianceEventWriter compliance = new ComplianceEventWriter();
+    private final ComplianceEventWriter compliance;
+
+    public UnderwritingEngine(ComplianceEventWriter compliance) {
+        this.compliance = compliance;
+    }
 
     public UnderwritingDecision decide(LoanApplication app) {
         UnderwritingDecision d = new UnderwritingDecision();

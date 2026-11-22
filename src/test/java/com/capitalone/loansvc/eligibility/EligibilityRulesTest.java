@@ -1,8 +1,9 @@
 package com.capitalone.loansvc.eligibility;
 
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.model.LoanApplication;
-import com.capitalone.loansvc.testsupport.ConfigHolderRule;
+import com.capitalone.loansvc.testsupport.LoanPropertiesRule;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.testsupport.TestData;
 import org.junit.Before;
@@ -22,7 +23,9 @@ import static org.junit.Assert.assertNull;
 public class EligibilityRulesTest {
 
     @Rule
-    public final ConfigHolderRule config = new ConfigHolderRule();
+    public final LoanPropertiesRule config = new LoanPropertiesRule();
+
+    private final EligibilityRules rules = TestBeans.get(EligibilityRules.class);
 
     @Before
     public void setUp() {
@@ -45,8 +48,8 @@ public class EligibilityRulesTest {
         heloc.setCollateralValue(new BigDecimal("100000"));
         heloc.setLtvPct(new BigDecimal("5.0000"));
 
-        String autoCode = EligibilityRules.evaluate(auto);
-        String helocCode = EligibilityRules.evaluate(heloc);
+        String autoCode = rules.evaluate(auto);
+        String helocCode = rules.evaluate(heloc);
 
         // AUTO uses 43% cap; HELOC uses 45% — same applicant, different outcome
         assertEquals("N", autoCode);
@@ -59,7 +62,7 @@ public class EligibilityRulesTest {
     @Test
     public void ficoBelow620IsHardDecline() {
         LoanApplication app = baseApp("AUTO", 610, new BigDecimal("50.0000"));
-        assertEquals("N", EligibilityRules.evaluate(app));
+        assertEquals("N", rules.evaluate(app));
         assertEquals("N", app.getEligibilityCode());
         assertEquals("fico below floor", app.getLastError());
     }
@@ -68,30 +71,30 @@ public class EligibilityRulesTest {
     public void nullFicoIsHardDecline() {
         LoanApplication app = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         app.setFicoScore(null);
-        assertEquals("N", EligibilityRules.evaluate(app));
+        assertEquals("N", rules.evaluate(app));
         assertEquals("fico below floor", app.getLastError());
     }
 
     @Test
     public void midFicoRequiresLtvAtMost80ForSecuredProducts() {
         LoanApplication highLtv = baseApp("AUTO", 640, new BigDecimal("85.0000"));
-        assertEquals("N", EligibilityRules.evaluate(highLtv));
+        assertEquals("N", rules.evaluate(highLtv));
         assertEquals("mid-fico ltv>80", highLtv.getLastError());
 
         LoanApplication okLtv = baseApp("AUTO", 640, new BigDecimal("75.0000"));
-        assertEquals("Y", EligibilityRules.evaluate(okLtv));
+        assertEquals("Y", rules.evaluate(okLtv));
         assertEquals(new BigDecimal("11.3333"), okLtv.getDtiPct());
     }
 
     @Test
     public void midFicoBandBoundaries() {
-        assertEquals("Y", EligibilityRules.evaluate(baseApp("AUTO", 620, new BigDecimal("80.0000"))));
-        assertEquals("N", EligibilityRules.evaluate(baseApp("AUTO", 620, new BigDecimal("80.0001"))));
-        assertEquals("N", EligibilityRules.evaluate(baseApp("AUTO", 659, new BigDecimal("80.0001"))));
-        assertEquals("Y", EligibilityRules.evaluate(baseApp("AUTO", 660, new BigDecimal("99.0000"))));
-        assertEquals("N", EligibilityRules.evaluate(baseApp("MORTGAGE", 640, new BigDecimal("85.0000"))));
-        assertEquals("N", EligibilityRules.evaluate(baseApp("HELOC", 640, new BigDecimal("85.0000"))));
-        assertEquals("Y", EligibilityRules.evaluate(baseApp("AUTO", 640, null)));
+        assertEquals("Y", rules.evaluate(baseApp("AUTO", 620, new BigDecimal("80.0000"))));
+        assertEquals("N", rules.evaluate(baseApp("AUTO", 620, new BigDecimal("80.0001"))));
+        assertEquals("N", rules.evaluate(baseApp("AUTO", 659, new BigDecimal("80.0001"))));
+        assertEquals("Y", rules.evaluate(baseApp("AUTO", 660, new BigDecimal("99.0000"))));
+        assertEquals("N", rules.evaluate(baseApp("MORTGAGE", 640, new BigDecimal("85.0000"))));
+        assertEquals("N", rules.evaluate(baseApp("HELOC", 640, new BigDecimal("85.0000"))));
+        assertEquals("Y", rules.evaluate(baseApp("AUTO", 640, null)));
     }
 
     @Test
@@ -99,37 +102,37 @@ public class EligibilityRulesTest {
         LoanApplication personal = baseApp("PERSONAL", 640, new BigDecimal("0.0000"));
         personal.setCollateralType("NONE");
         personal.setCollateralValue(BigDecimal.ZERO);
-        assertEquals("Y", EligibilityRules.evaluate(personal));
+        assertEquals("Y", rules.evaluate(personal));
 
         LoanApplication personalHighLtv = baseApp("PERSONAL", 640, new BigDecimal("150.0000"));
-        assertEquals("Y", EligibilityRules.evaluate(personalHighLtv));
+        assertEquals("Y", rules.evaluate(personalHighLtv));
     }
 
     @Test
     public void dtiLimitIsInclusive() {
         // income 120000 -> monthly 10000.00; term 0 -> estimated payment 0
-        assertEquals("Y", EligibilityRules.evaluate(dtiApp("AUTO", "4300")));
+        assertEquals("Y", rules.evaluate(dtiApp("AUTO", "4300")));
         LoanApplication over = dtiApp("AUTO", "4301");
-        assertEquals("N", EligibilityRules.evaluate(over));
+        assertEquals("N", rules.evaluate(over));
         assertEquals(new BigDecimal("43.0100"), over.getDtiPct());
         assertEquals("dti exceeds limit 43", over.getLastError());
 
-        assertEquals("Y", EligibilityRules.evaluate(dtiApp("HELOC", "4500")));
+        assertEquals("Y", rules.evaluate(dtiApp("HELOC", "4500")));
         LoanApplication helocOver = dtiApp("HELOC", "4501");
-        assertEquals("N", EligibilityRules.evaluate(helocOver));
+        assertEquals("N", rules.evaluate(helocOver));
         assertEquals("dti exceeds limit 45", helocOver.getLastError());
     }
 
     @Test
     public void productCodeIsTrimmedAndUppercasedForDtiLimit() {
-        assertEquals("Y", EligibilityRules.evaluate(dtiApp(" heloc ", "4500")));
+        assertEquals("Y", rules.evaluate(dtiApp(" heloc ", "4500")));
     }
 
     @Test
     public void ficoCheckRunsBeforeDtiCheck() {
         LoanApplication app = dtiApp("AUTO", "9000");
         app.setFicoScore(600);
-        assertEquals("N", EligibilityRules.evaluate(app));
+        assertEquals("N", rules.evaluate(app));
         assertEquals("fico below floor", app.getLastError());
         assertEquals(new BigDecimal("90.0000"), app.getDtiPct());
     }
@@ -139,12 +142,12 @@ public class EligibilityRulesTest {
         LoanApplication app = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         app.getCustomer().setAnnualIncome(BigDecimal.ZERO);
         app.getCustomer().setMonthlyDebt(new BigDecimal("2000"));
-        assertEquals("Y", EligibilityRules.evaluate(app));
+        assertEquals("Y", rules.evaluate(app));
         assertDecimal("0", app.getDtiPct());
 
         LoanApplication nullIncome = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         nullIncome.getCustomer().setAnnualIncome(null);
-        assertEquals("Y", EligibilityRules.evaluate(nullIncome));
+        assertEquals("Y", rules.evaluate(nullIncome));
         assertDecimal("0", nullIncome.getDtiPct());
     }
 
@@ -152,7 +155,7 @@ public class EligibilityRulesTest {
     public void nullMonthlyDebtTreatedAsZero() {
         LoanApplication app = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         app.getCustomer().setMonthlyDebt(null);
-        assertEquals("Y", EligibilityRules.evaluate(app));
+        assertEquals("Y", rules.evaluate(app));
         assertEquals(new BigDecimal("4.6667"), app.getDtiPct());
     }
 
@@ -160,42 +163,42 @@ public class EligibilityRulesTest {
     public void zeroAmountIsErrOnlyAfterAllOtherRulesPass() {
         LoanApplication zero = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         zero.setRequestedAmount(BigDecimal.ZERO);
-        assertEquals("ERR", EligibilityRules.evaluate(zero));
+        assertEquals("ERR", rules.evaluate(zero));
         assertEquals("ERR", zero.getEligibilityCode());
         assertNull(zero.getLastError());
         assertEquals(new BigDecimal("6.6667"), zero.getDtiPct());
 
         LoanApplication zeroLowFico = baseApp("AUTO", 600, new BigDecimal("50.0000"));
         zeroLowFico.setRequestedAmount(BigDecimal.ZERO);
-        assertEquals("N", EligibilityRules.evaluate(zeroLowFico));
+        assertEquals("N", rules.evaluate(zeroLowFico));
 
         LoanApplication zeroMidFicoHighLtv = baseApp("AUTO", 640, new BigDecimal("85.0000"));
         zeroMidFicoHighLtv.setRequestedAmount(BigDecimal.ZERO);
-        assertEquals("N", EligibilityRules.evaluate(zeroMidFicoHighLtv));
+        assertEquals("N", rules.evaluate(zeroMidFicoHighLtv));
 
         LoanApplication zeroHighDti = dtiApp("AUTO", "5000");
         zeroHighDti.setRequestedAmount(BigDecimal.ZERO);
-        assertEquals("N", EligibilityRules.evaluate(zeroHighDti));
+        assertEquals("N", rules.evaluate(zeroHighDti));
     }
 
     @Test
     public void negativeOrNullAmountIsErr() {
         LoanApplication negative = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         negative.setRequestedAmount(new BigDecimal("-1"));
-        assertEquals("ERR", EligibilityRules.evaluate(negative));
+        assertEquals("ERR", rules.evaluate(negative));
 
         LoanApplication nul = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         nul.setRequestedAmount(null);
-        assertEquals("ERR", EligibilityRules.evaluate(nul));
+        assertEquals("ERR", rules.evaluate(nul));
         assertEquals(new BigDecimal("6.6667"), nul.getDtiPct());
     }
 
     @Test
     public void missingCustomerOrApplicationIsErr() {
-        assertEquals("ERR", EligibilityRules.evaluate(null));
+        assertEquals("ERR", rules.evaluate(null));
         LoanApplication app = baseApp("AUTO", 700, new BigDecimal("50.0000"));
         app.setCustomer(null);
-        assertEquals("ERR", EligibilityRules.evaluate(app));
+        assertEquals("ERR", rules.evaluate(app));
         assertEquals("no customer", app.getLastError());
         assertNull(app.getDtiPct());
     }
@@ -203,12 +206,12 @@ public class EligibilityRulesTest {
     @Test
     public void dtiLimitsAndFicoFloorComeFromConfig() {
         config.set("dti.default", "50");
-        assertEquals("Y", EligibilityRules.evaluate(dtiApp("AUTO", "4900")));
+        assertEquals("Y", rules.evaluate(dtiApp("AUTO", "4900")));
 
         config.set("fico.floor", "600");
         LoanApplication fico610 = baseApp("AUTO", 610, new BigDecimal("95.0000"));
         // 610 is below the hardcoded 620-659 mid band, so no LTV cap applies
-        assertEquals("Y", EligibilityRules.evaluate(fico610));
+        assertEquals("Y", rules.evaluate(fico610));
     }
 
     private LoanApplication dtiApp(String product, String monthlyDebt) {

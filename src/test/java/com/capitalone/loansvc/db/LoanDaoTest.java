@@ -1,5 +1,6 @@
 package com.capitalone.loansvc.db;
 
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.testsupport.TestData;
@@ -16,7 +17,7 @@ import static org.junit.Assert.fail;
 /** Characterization of LN_APPL persistence (insert / update / findById) and RATE_TBL lookup. */
 public class LoanDaoTest {
 
-    private final LoanDao dao = new LoanDao();
+    private final LoanDao dao = TestBeans.get(LoanDao.class);
 
     @Before
     public void setUp() {

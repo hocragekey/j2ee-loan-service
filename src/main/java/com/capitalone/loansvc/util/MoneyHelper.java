@@ -1,13 +1,14 @@
 package com.capitalone.loansvc.util;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 public class MoneyHelper {
 
-    private static final Logger LOG = Logger.getLogger(MoneyHelper.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MoneyHelper.class);
 
     public static BigDecimal round2(BigDecimal v) {
         if (v == null) {

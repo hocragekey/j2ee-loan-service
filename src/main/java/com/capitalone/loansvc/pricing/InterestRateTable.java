@@ -3,11 +3,15 @@ package com.capitalone.loansvc.pricing;
 import com.capitalone.loansvc.db.LoanDao;
 import com.capitalone.loansvc.util.MoneyHelper;
 import com.capitalone.loansvc.util.StringHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
+@Component
 public class InterestRateTable {
 
     private static final Map<String, BigDecimal> FALLBACK = new HashMap<String, BigDecimal>();
@@ -18,7 +22,13 @@ public class InterestRateTable {
         FALLBACK.put("PERSONAL", new BigDecimal("9.9900"));
     }
 
-    private final LoanDao loanDao = new LoanDao();
+    private static final Logger LOG = LoggerFactory.getLogger(InterestRateTable.class);
+
+    private final LoanDao loanDao;
+
+    public InterestRateTable(LoanDao loanDao) {
+        this.loanDao = loanDao;
+    }
 
     public BigDecimal baseRateFor(String productCode) {
         String prod = StringHelper.upper(productCode);
@@ -28,7 +38,7 @@ public class InterestRateTable {
         }
         BigDecimal fb = FALLBACK.get(prod);
         if (fb == null) {
-            System.out.println("InterestRateTable unknown product " + prod + " defaulting 12%");
+            LOG.info("InterestRateTable unknown product " + prod + " defaulting 12%");
             return new BigDecimal("12.0000");
         }
         return fb;

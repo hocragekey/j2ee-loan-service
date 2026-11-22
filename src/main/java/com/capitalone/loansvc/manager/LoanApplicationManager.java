@@ -19,25 +19,51 @@ import com.capitalone.loansvc.util.InputValidationException;
 import com.capitalone.loansvc.util.LoanInputValidator;
 import com.capitalone.loansvc.util.StringHelper;
 
+import org.springframework.stereotype.Service;
+
 import java.math.BigDecimal;
 
 /**
  * God-object orchestrator — intentionally tightly coupled across domains.
  */
+@Service
 public class LoanApplicationManager {
 
-    private final CustomerManager customerManager = new CustomerManager();
-    private final DocumentManager documentManager = new DocumentManager();
-    private final LoanDao loanDao = new LoanDao();
-    private final KycChecker kycChecker = new KycChecker();
-    private final CreditBureauClient creditBureauClient = new CreditBureauClient();
-    private final CollateralValuator collateralValuator = new CollateralValuator();
-    private final InterestRateTable interestRateTable = new InterestRateTable();
-    private final RateAdjustmentHelper rateAdjustmentHelper = new RateAdjustmentHelper();
-    private final UnderwritingEngine underwritingEngine = new UnderwritingEngine();
-    private final PaymentScheduleBuilder paymentScheduleBuilder = new PaymentScheduleBuilder();
-    private final NotificationDispatcher notificationDispatcher = new NotificationDispatcher();
-    private final AuditLogger auditLogger = new AuditLogger();
+    private final CustomerManager customerManager;
+    private final DocumentManager documentManager;
+    private final LoanDao loanDao;
+    private final KycChecker kycChecker;
+    private final CreditBureauClient creditBureauClient;
+    private final CollateralValuator collateralValuator;
+    private final EligibilityRules eligibilityRules;
+    private final InterestRateTable interestRateTable;
+    private final RateAdjustmentHelper rateAdjustmentHelper;
+    private final UnderwritingEngine underwritingEngine;
+    private final PaymentScheduleBuilder paymentScheduleBuilder;
+    private final NotificationDispatcher notificationDispatcher;
+    private final AuditLogger auditLogger;
+
+    public LoanApplicationManager(CustomerManager customerManager, DocumentManager documentManager,
+                                  LoanDao loanDao, KycChecker kycChecker,
+                                  CreditBureauClient creditBureauClient, CollateralValuator collateralValuator,
+                                  EligibilityRules eligibilityRules, InterestRateTable interestRateTable,
+                                  RateAdjustmentHelper rateAdjustmentHelper, UnderwritingEngine underwritingEngine,
+                                  PaymentScheduleBuilder paymentScheduleBuilder,
+                                  NotificationDispatcher notificationDispatcher, AuditLogger auditLogger) {
+        this.customerManager = customerManager;
+        this.documentManager = documentManager;
+        this.loanDao = loanDao;
+        this.kycChecker = kycChecker;
+        this.creditBureauClient = creditBureauClient;
+        this.collateralValuator = collateralValuator;
+        this.eligibilityRules = eligibilityRules;
+        this.interestRateTable = interestRateTable;
+        this.rateAdjustmentHelper = rateAdjustmentHelper;
+        this.underwritingEngine = underwritingEngine;
+        this.paymentScheduleBuilder = paymentScheduleBuilder;
+        this.notificationDispatcher = notificationDispatcher;
+        this.auditLogger = auditLogger;
+    }
 
     public LoanApplication processApplication(LoanApplication app) {
         if (app == null) {
@@ -87,7 +113,7 @@ public class LoanApplicationManager {
 
         collateralValuator.value(app);
 
-        String elig = EligibilityRules.evaluate(app);
+        String elig = eligibilityRules.evaluate(app);
         app.setEligibilityCode(elig);
 
         BigDecimal base = interestRateTable.baseRateFor(app.getProductCode());
@@ -144,7 +170,7 @@ public class LoanApplicationManager {
         }
         app.setFicoScore(creditBureauClient.pullFico(app.getApplicationId(), app.getCustomer()));
         collateralValuator.value(app);
-        return EligibilityRules.evaluate(app);
+        return eligibilityRules.evaluate(app);
     }
 
     public LoanApplication getApplication(String applId) {

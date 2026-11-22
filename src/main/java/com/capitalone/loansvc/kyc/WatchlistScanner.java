@@ -1,5 +1,6 @@
 package com.capitalone.loansvc.kyc;
 
+import org.springframework.stereotype.Component;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.util.StringHelper;
 
@@ -7,6 +8,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+@Component
 public class WatchlistScanner {
 
     private static final Set<String> BLOCKED_LAST_NAMES =

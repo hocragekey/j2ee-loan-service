@@ -1,15 +1,30 @@
 package com.capitalone.loansvc.manager;
 
-import com.capitalone.loansvc.db.DbUtil;
+import com.capitalone.loansvc.db.Jdbc;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.util.StringHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import javax.sql.DataSource;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 
+@Service
 public class DocumentManager {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DocumentManager.class);
+
+    private final DataSource dataSource;
+
+    public DocumentManager(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+
 
     public List<String> buildChecklist(LoanApplication app) {
         List<String> docs = new ArrayList<String>();
@@ -39,7 +54,7 @@ public class DocumentManager {
         Connection c = null;
         PreparedStatement ps = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement(
                     "INSERT INTO DOC_CHKLIST (APPL_ID, DOC_TYPE, REQ_FLG, RCVD_FLG) VALUES (?,?,?,?)");
             for (String d : docs) {
@@ -51,10 +66,10 @@ public class DocumentManager {
             }
             ps.executeBatch();
         } catch (Exception e) {
-            System.out.println("DocumentManager persist failed: " + e.getMessage());
+            LOG.warn("DocumentManager persist failed: " + e.getMessage());
         } finally {
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 }
