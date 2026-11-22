@@ -1,0 +1,155 @@
+name: Container image
+
+# Builds the loan-service image (linux/amd64, the ECS/Fargate target), tags it with the
+# commit SHA and scans it with Trivy (DEL-08, DEL-09, PLAT-08). Nothing is pushed: no AWS
+# account is wired to this repo yet. See "ECR push (deploy environments)" at the bottom.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE_NAME: loan-service
+  TRIVY_VERSION: v0.70.0
+
+jobs:
+  build-and-scan:
+    name: Build and scan image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write # upload Trivy SARIF to code scanning
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Immutable tag = full commit SHA. No `latest` tag is produced.
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name loan-service -p 8080:8080 "${IMAGE_NAME}:${GITHUB_SHA}"
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null http://localhost:8080/loan-service/ && break
+            sleep 2
+          done
+          curl -fsS -o /dev/null http://localhost:8080/loan-service/
+          curl -fsS -X POST \
+            -d 'customerId=C10001&productCode=AUTO&amount=20000&termMonths=48&collateralType=AUTO&collateralValue=28000' \
+            http://localhost:8080/loan-service/eligibility | grep -q 'Customer: C10001'
+          docker rm -f loan-service
+
+      # Full report (OS + Java libraries, all severities) -> code scanning + job summary.
+      - name: Trivy scan (report, SARIF)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: '0'
+
+      - name: Upload Trivy SARIF
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container
+
+      - name: Trivy scan (summary table)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          output: trivy-results.txt
+          exit-code: '0'
+          skip-setup-trivy: true
+
+      - name: Write scan summary
+        if: always() && hashFiles('trivy-results.txt') != ''
+        run: |
+          {
+            echo "## Trivy: ${IMAGE_NAME}:${GITHUB_SHA} (HIGH/CRITICAL)"
+            echo '```'
+            cat trivy-results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Gate: fail on fixable HIGH/CRITICAL in OS packages (base image hygiene).
+      # Java library findings (Log4j 1.2.17, H2 1.4.200) are report-only until the
+      # dependency upgrade (SEC-04) lands; then add `library` to vuln-type.
+      - name: Trivy gate (OS packages, fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          vuln-type: os
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          skip-setup-trivy: true
+
+# ---------------------------------------------------------------------------------------
+# ECR push (deploy environments) — documented, NOT configured (DEL-08, PLAT-08).
+# Enable once an AWS account is wired: create an IAM role trusted by GitHub's OIDC provider
+# (token.actions.githubusercontent.com, sub = repo:hocragekey/j2ee-loan-service:ref:refs/heads/main)
+# with ecr:GetAuthorizationToken + push actions scoped to the repository, store its ARN in
+# the repo variable AWS_ECR_PUSH_ROLE_ARN, and add a job like:
+#
+#   push-ecr:
+#     needs: build-and-scan
+#     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#     runs-on: ubuntu-24.04
+#     environment: integration          # approval gate for promoted environments
+#     permissions: { contents: read, id-token: write }
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+#       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+#         with: { role-to-assume: "${{ vars.AWS_ECR_PUSH_ROLE_ARN }}", aws-region: us-east-1 }
+#       - id: ecr
+#         uses: aws-actions/amazon-ecr-login@7290e214a610b32bc0eef81748948b6d466a8783 # v2.2.0
+#       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+#         with:
+#           context: .
+#           platforms: linux/amd64
+#           push: true
+#           tags: ${{ steps.ecr.outputs.registry }}/loan-svc-integration:${{ github.sha }}
+#           cache-from: type=gha
+#
+# us-west-2 receives the image through ECR cross-region replication on the us-east-1
+# registry (see README "Container"), so the job pushes once. ECR repositories use
+# IMMUTABLE tags and scan-on-push; Phase 8 CloudFormation will own them.
+# ---------------------------------------------------------------------------------------

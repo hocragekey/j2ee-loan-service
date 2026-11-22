@@ -98,6 +98,60 @@ H2 is in-process memory (`DB_CLOSE_DELAY=-1`). Restarting Tomcat clears data unl
 
 The multi-region target (ECS/Fargate + ECR, ALB with TLS and WAF, Aurora PostgreSQL Global Database with write forwarding, Route 53 latency routing) is templated in [`infra/`](infra/README.md): stack order, parameters, integration deploy commands, and local validation (`infra/scripts/validate.sh`). These templates are not deployed by this repository; the legacy EC2/Tomcat flow above stays in place until cutover.
 
+## Container
+
+Interim runtime for the current WAR (`DEL-08`, `PLAT-01`): [`Dockerfile`](Dockerfile) builds and tests with Maven 3.9 + Amazon Corretto 8, then runs Tomcat 9 on the Amazon Corretto 8 JRE (Amazon Linux 2023) as non-root UID 10001. Base images and the Tomcat tarball are pinned by digest / SHA-512. Requires Docker 23+ (BuildKit).
+
+```bash
+GIT_SHA=$(git rev-parse HEAD)
+docker build --platform linux/amd64 -t loan-service:$GIT_SHA .
+# behind a Maven Central 429: add --build-arg MAVEN_MIRROR_URL=https://maven-central.storage-download.googleapis.com/maven2/
+# behind a Docker Hub 429:    add --build-arg BASE_REGISTRY=mirror.gcr.io/library  (same digests)
+docker run --rm -p 8080:8080 loan-service:$GIT_SHA
+# http://localhost:8080/loan-service/
+```
+
+- JVM heap follows the container memory limit (`-XX:MaxRAMPercentage=75.0`); override with `-e CATALINA_OPTS=...`.
+- `HEALTHCHECK` probes `GET /loan-service/` until Phase 5 adds `/health/live` and `/health/ready` (`RES-01`).
+- H2 is in-memory, so each container starts from the seed data and loses writes on restart (same as Tomcat on EC2 today).
+- CI: [`.github/workflows/container.yml`](.github/workflows/container.yml) builds the image on every PR and push to `main`, tags it with the commit SHA (no `latest`), smoke-tests it, and runs Trivy. Fixable HIGH/CRITICAL OS findings fail the build; Java library findings are report-only until the Log4j/H2 upgrade (`SEC-04`).
+
+### Push to ECR (integration)
+
+Account `118938645536`, repository `loan-svc-integration`, primary region `us-east-1`, replicated to `us-west-2`. Build from a clean checkout so the tag matches the code. Tags are immutable: never re-push a SHA.
+
+```bash
+GIT_SHA=$(git rev-parse HEAD)
+ECR=118938645536.dkr.ecr.us-east-1.amazonaws.com
+
+# One-time, only if the `ecr` stacks from infra/ aren't deployed yet (they own the
+# repositories). Pre-creating us-west-2 keeps immutable tags + scan-on-push on the replica too.
+for r in us-east-1 us-west-2; do
+  aws ecr create-repository --region $r --repository-name loan-svc-integration \
+    --image-tag-mutability IMMUTABLE --image-scanning-configuration scanOnPush=true
+done
+
+# One-time: replicate us-east-1 -> us-west-2. This call REPLACES the registry's whole
+# replication configuration, so check `aws ecr describe-registry --region us-east-1` first
+# and merge any existing rules. Only images pushed after this is set are replicated.
+# Without replication, push the same tag to both regions instead (infra/README.md#ecr-replication).
+aws ecr put-replication-configuration --region us-east-1 --replication-configuration \
+  '{"rules":[{"destinations":[{"region":"us-west-2","registryId":"118938645536"}],"repositoryFilters":[{"filter":"loan-svc-integration","filterType":"PREFIX_MATCH"}]}]}'
+
+# Every release: build, tag with the SHA, push once to us-east-1.
+docker build --platform linux/amd64 -t loan-service:$GIT_SHA .
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
+docker tag loan-service:$GIT_SHA $ECR/loan-svc-integration:$GIT_SHA
+docker push $ECR/loan-svc-integration:$GIT_SHA
+
+# Confirm the image landed in both regions (replication usually takes under a minute).
+for r in us-east-1 us-west-2; do
+  aws ecr describe-images --region $r --repository-name loan-svc-integration --image-ids imageTag=$GIT_SHA
+done
+```
+
+The CI equivalent (GitHub OIDC role, no stored AWS keys) is documented at the bottom of `container.yml`, not enabled.
+
 ## Seed customers
 
 | ID | Notes |
