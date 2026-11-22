@@ -20,6 +20,11 @@ PEM="${SSH_KEY_FILE:-${HOME}/.ssh/${KEY_NAME}.pem}"
 INVENTORY_FILE="${INVENTORY_FILE:-${ROOT}/ansible/inventories/integration/hosts.yml}"
 SSH_USER="${SSH_USER:-ec2-user}"
 WAR="${WAR_FILE:-${ROOT}/target/loan-service.war}"
+# Absolute paths: the scripts cd into ansible/ before running ansible-playbook.
+INVENTORY_FILE="$(realpath -m "${INVENTORY_FILE}")"
+WAR="$(realpath -m "${WAR}")"
+# JSON extra-vars so paths with spaces survive Ansible's key=value parsing.
+WAR_EXTRA_VARS="$(python3 -c 'import json, sys; print(json.dumps({"app_war_src": sys.argv[1]}))' "${WAR}")"
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
   echo "ERROR: inventory ${INVENTORY_FILE} not found. Run deploy/provision-integration-ec2.sh or copy hosts.yml.example." >&2
@@ -68,4 +73,4 @@ ansible --version | head -n 2
 
 echo "==> Running site.yml"
 cd "${ROOT}/ansible"
-ansible-playbook -i "${INVENTORY_FILE}" site.yml -e "app_war_src=${WAR}"
+ansible-playbook -i "${INVENTORY_FILE}" site.yml -e "${WAR_EXTRA_VARS}"

@@ -10,6 +10,11 @@ set -euo pipefail
 ROOT="${LOAN_SVC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 INVENTORY_FILE="${INVENTORY_FILE:-${ROOT}/ansible/inventories/integration/hosts.yml}"
 WAR="${WAR_FILE:-${ROOT}/target/loan-service.war}"
+# Absolute paths: the scripts cd into ansible/ before running ansible-playbook.
+INVENTORY_FILE="$(realpath -m "${INVENTORY_FILE}")"
+WAR="$(realpath -m "${WAR}")"
+# JSON extra-vars so paths with spaces survive Ansible's key=value parsing.
+WAR_EXTRA_VARS="$(python3 -c 'import json, sys; print(json.dumps({"app_war_src": sys.argv[1]}))' "${WAR}")"
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # DrvFs is world-writable; Ansible refuses ansible.cfg there — set env explicitly.
@@ -25,4 +30,4 @@ ansible --version | head -n 2
 ansible-playbook \
   -i "${INVENTORY_FILE}" \
   "${ROOT}/ansible/site.yml" \
-  -e "app_war_src=${WAR}"
+  -e "${WAR_EXTRA_VARS}"
