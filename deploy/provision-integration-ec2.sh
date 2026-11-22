@@ -49,7 +49,7 @@ validate_cidr() {
     exit 1
   fi
   if (( BASH_REMATCH[5] == 0 )) && [[ "${ALLOW_OPEN_INGRESS}" != "true" ]]; then
-    echo "ERROR: refusing to open ingress to 0.0.0.0/0. Set ALLOW_OPEN_INGRESS=true to override." >&2
+    echo "ERROR: refusing to open ingress to '${cidr}' (a /0 prefix is 0.0.0.0/0). Set ALLOW_OPEN_INGRESS=true to override." >&2
     exit 1
   fi
 }
