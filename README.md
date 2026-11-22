@@ -94,6 +94,10 @@ H2 is in-process memory (`DB_CLOSE_DELAY=-1`). Restarting Tomcat clears data unl
 
 [`deploy/ec2-tomcat-setup.sh`](deploy/ec2-tomcat-setup.sh) remains as the older “scp a script onto the box” path if Ansible is unavailable.
 
+## Target AWS infrastructure (CloudFormation)
+
+The multi-region target (ECS/Fargate + ECR, ALB with TLS and WAF, Aurora PostgreSQL Global Database with write forwarding, Route 53 latency routing) is templated in [`infra/`](infra/README.md): stack order, parameters, integration deploy commands, and local validation (`infra/scripts/validate.sh`). These templates are not deployed by this repository; the legacy EC2/Tomcat flow above stays in place until cutover.
+
 ## Seed customers
 
 | ID | Notes |

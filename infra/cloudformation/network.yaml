@@ -1,0 +1,500 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  loan-service regional network (one stack per active region). VPC spanning two
+  Availability Zones with public (ALB/NAT only), private app and private data
+  subnets, NAT gateways, VPC endpoints for ECR/Logs/Secrets Manager/SSM/STS/X-Ray
+  and VPC flow logs. Controls: PLAT-10, RES-11, IAC-08.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Environment }
+        Parameters: [EnvironmentName, ServiceName]
+      - Label: { default: Addressing }
+        Parameters:
+          - VpcCidr
+          - PublicSubnetACidr
+          - PublicSubnetBCidr
+          - AppSubnetACidr
+          - AppSubnetBCidr
+          - DataSubnetACidr
+          - DataSubnetBCidr
+      - Label: { default: Egress and logging }
+        Parameters: [NatGatewayMode, CreateInterfaceEndpoints, FlowLogRetentionDays]
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    AllowedValues: [integration, dev, staging, prod]
+    Description: Deployment environment name. Names are prefixed ServiceName-EnvironmentName (e.g. loan-svc-integration).
+  ServiceName:
+    Type: String
+    Default: loan-service
+    AllowedPattern: "^[a-z][a-z0-9-]{1,30}$"
+    Description: Service name used in resource names and tags.
+  VpcCidr:
+    Type: String
+    Default: 10.20.0.0/16
+    AllowedPattern: "^(\\d{1,3}\\.){3}\\d{1,3}/\\d{1,2}$"
+    Description: VPC CIDR. Use a different, non-overlapping range per region.
+  PublicSubnetACidr:
+    Type: String
+    Default: 10.20.0.0/24
+    Description: Public subnet in AZ a (ALB and NAT gateway only).
+  PublicSubnetBCidr:
+    Type: String
+    Default: 10.20.1.0/24
+    Description: Public subnet in AZ b (ALB and NAT gateway only).
+  AppSubnetACidr:
+    Type: String
+    Default: 10.20.10.0/24
+    Description: Private application subnet in AZ a (ECS tasks).
+  AppSubnetBCidr:
+    Type: String
+    Default: 10.20.11.0/24
+    Description: Private application subnet in AZ b (ECS tasks).
+  DataSubnetACidr:
+    Type: String
+    Default: 10.20.20.0/24
+    Description: Private data subnet in AZ a (Aurora). No route to the internet.
+  DataSubnetBCidr:
+    Type: String
+    Default: 10.20.21.0/24
+    Description: Private data subnet in AZ b (Aurora). No route to the internet.
+  NatGatewayMode:
+    Type: String
+    Default: PerAz
+    AllowedValues: [PerAz, Single]
+    Description: >-
+      PerAz (production default, one NAT gateway per AZ) or Single (demo/non-prod
+      only; a single NAT gateway is an AZ-level single point of failure).
+  CreateInterfaceEndpoints:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Create interface VPC endpoints (ECR, Logs, Secrets Manager, SSM, KMS, STS,
+      X-Ray) so AWS API traffic stays private. "false" is a cost-saving option
+      for integration/demo only; traffic then egresses through NAT.
+  FlowLogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [7, 14, 30, 60, 90, 180, 365]
+    Description: Retention in days for the VPC flow log group.
+
+Conditions:
+  NatPerAz: !Equals [!Ref NatGatewayMode, PerAz]
+  CreateEndpoints: !Equals [!Ref CreateInterfaceEndpoints, "true"]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-${AWS::Region}" }
+        - { Key: Environment, Value: !Ref EnvironmentName }
+        - { Key: Service, Value: !Ref ServiceName }
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-igw" }
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-public-a" }
+        - { Key: Tier, Value: public }
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-public-b" }
+        - { Key: Tier, Value: public }
+
+  AppSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref AppSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-app-a" }
+        - { Key: Tier, Value: app }
+
+  AppSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref AppSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-app-b" }
+        - { Key: Tier, Value: app }
+
+  DataSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref DataSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-data-a" }
+        - { Key: Tier, Value: data }
+
+  DataSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref DataSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-data-b" }
+        - { Key: Tier, Value: data }
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-public" }
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  NatEipA:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEipA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-nat-a" }
+
+  NatEipB:
+    Type: AWS::EC2::EIP
+    Condition: NatPerAz
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Condition: NatPerAz
+    Properties:
+      AllocationId: !GetAtt NatEipB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-nat-b" }
+
+  AppRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-app-a" }
+
+  AppRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-app-b" }
+
+  AppDefaultRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref AppRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  AppDefaultRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref AppRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !If [NatPerAz, !Ref NatGatewayB, !Ref NatGatewayA]
+
+  AppSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnetA
+      RouteTableId: !Ref AppRouteTableA
+
+  AppSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnetB
+      RouteTableId: !Ref AppRouteTableB
+
+  # Data subnets have no default route: Aurora is reachable only from inside the VPC.
+  DataRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-data" }
+
+  DataSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DataSubnetA
+      RouteTableId: !Ref DataRouteTable
+
+  DataSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DataSubnetB
+      RouteTableId: !Ref DataRouteTable
+
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateEndpoints
+    Properties:
+      GroupDescription: HTTPS from inside the VPC to interface VPC endpoints
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidr
+          Description: HTTPS from VPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidr
+          Description: HTTPS within VPC
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-vpce" }
+
+  # ECS task security group. Ingress from the ALB is added by edge.yaml; Aurora
+  # ingress from this group is added by data.yaml.
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: loan-service ECS tasks (no direct inbound; ALB rule added by edge stack)
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS egress to VPC endpoints and external dependencies via NAT
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !Ref VpcCidr
+          Description: PostgreSQL to Aurora in the data subnets
+      Tags:
+        - { Key: Name, Value: !Sub "${ServiceName}-${EnvironmentName}-app" }
+
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Gateway
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      RouteTableIds: [!Ref AppRouteTableA, !Ref AppRouteTableB]
+
+  EcrApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  EcrDkrEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.dkr"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  SsmEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssm"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  KmsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.kms"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  StsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  XRayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoints
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.xray"
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  FlowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "${ServiceName}-${EnvironmentName}/vpc-flow-logs"
+      RetentionInDays: !Ref FlowLogRetentionDays
+
+  FlowLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Allows VPC Flow Logs to write to its own log group (plus the discovery calls the service makes).
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: vpc-flow-logs.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { "aws:SourceAccount": !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: write-flow-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${FlowLogGroup.Arn}:*"
+              - Effect: Allow
+                Action: logs:DescribeLogStreams
+                Resource: !GetAtt FlowLogGroup.Arn
+              # DescribeLogGroups does not support resource-level permissions.
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: "*"
+
+  VpcFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceId: !Ref Vpc
+      ResourceType: VPC
+      TrafficType: ALL
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogGroup
+      DeliverLogsPermissionArn: !GetAtt FlowLogRole.Arn
+
+Outputs:
+  VpcId:
+    Description: VPC id.
+    Value: !Ref Vpc
+    Export: { Name: !Sub "${AWS::StackName}-VpcId" }
+  VpcCidr:
+    Description: VPC CIDR block.
+    Value: !Ref VpcCidr
+    Export: { Name: !Sub "${AWS::StackName}-VpcCidr" }
+  PublicSubnetIds:
+    Description: Public subnets (ALB only), one per AZ.
+    Value: !Join [",", [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+    Export: { Name: !Sub "${AWS::StackName}-PublicSubnetIds" }
+  AppSubnetIds:
+    Description: Private application subnets (ECS tasks), one per AZ.
+    Value: !Join [",", [!Ref AppSubnetA, !Ref AppSubnetB]]
+    Export: { Name: !Sub "${AWS::StackName}-AppSubnetIds" }
+  AppSecurityGroupId:
+    Description: Security group attached to ECS tasks.
+    Value: !Ref AppSecurityGroup
+    Export: { Name: !Sub "${AWS::StackName}-AppSecurityGroupId" }
+  DataSubnetIds:
+    Description: Private data subnets (Aurora), one per AZ.
+    Value: !Join [",", [!Ref DataSubnetA, !Ref DataSubnetB]]
+    Export: { Name: !Sub "${AWS::StackName}-DataSubnetIds" }
