@@ -1,0 +1,6 @@
+# Allowlist: the build only needs the POM and sources. Everything else (target/,
+# .git/, deploy/secrets/, *.pem, ansible inventories, IDE files) stays out of the
+# build context so it cannot leak into an image layer (SEC-01).
+*
+!pom.xml
+!src/
