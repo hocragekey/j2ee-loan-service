@@ -416,6 +416,17 @@ Seed customers: `db/seed/R__seed_customers.sql` (repeatable, `INSERT … ON CONF
 the same four rows as legacy `data.sql`. It is on `spring.flyway.locations` only in the `local`, `test`
 and `integration` profiles (D-14).
 
+**As built in P4-1 (supersedes the sketch above for V1/V2):** the first migrations are a one-to-one
+PostgreSQL port of the legacy tables so the existing DAO SQL and business results are unchanged:
+`V1__baseline_schema.sql` keeps the legacy table/column names (`cust_acct`, `ln_appl`, `audit_evt`,
+`doc_chklist`, `rate_tbl`; unquoted, so upper-case SQL still works) and types (`timestamp` without
+time zone, `bigint` identity for the former `AUTO_INCREMENT`). `V2__seed_rates_and_customers.sql`
+holds the rate card **and** customers C10001–C10004 (D-14 decided by the Phase 4 task: seed in all
+environments for now; revisit before production). The renames, UUIDs, constraints and new columns in
+the sketch move to later versioned migrations (V3+) with P4-2/P4-3. `scripts/db/verify-migrations.py`
+applies V1/V2 to PostgreSQL 16 and compares tables, columns, keys and seed rows with
+`schema.sql`/`data.sql`; a Testcontainers test is added with the Java DataSource wiring (P4-2).
+
 **Migration from `schema.sql`:** no data to move (A2). Cutover is "deploy the new schema". The legacy
 H2 schema keeps working on the legacy stack until phase 9.
 
@@ -453,7 +464,7 @@ The app is region-agnostic and connects to the **regional cluster endpoint** fro
 |---|------------|--------------------|
 | W1 | Secondary regions forward DML (INSERT/UPDATE/DELETE incl. `ON CONFLICT`) to the writer; DDL is not forwarded | Flyway runs only against the writer region (deploy step or `spring.flyway.enabled` true only there) |
 | W2 | Forwarded writes add cross-region latency | Statement timeout (5s) and the request budget (§10) leave room; measure in phase 8 |
-| W3 | Read-after-write consistency for forwarded sessions is configurable | Phase 8 sets session-level consistency so a create followed by a read in the same request is consistent |
+| W3 | Read-after-write consistency for forwarded sessions is configurable | Cluster parameter `apg_write_forward.consistency_mode=session`; secondary tasks also get `LOAN_DB_WRITEFORWARDCONSISTENCY=session` and the app runs `SET apg_write_forward.consistency_mode = 'session'` per connection (Aurora PostgreSQL name; `aurora_replica_read_consistency` is Aurora MySQL) |
 | W4 | Row-locking reads (`FOR UPDATE SKIP LOCKED`) may not be appropriate through forwarding | The outbox relay and idempotency cleanup run only in the writer region (`loan.outbox.relay.enabled`) |
 | W5 | Any unsupported statement found in phase 8 | Replace it, or document an approved write-affinity policy for that path |
 
@@ -644,14 +655,16 @@ committed defaults and are **not** overridden per environment. Changing one is a
 | `loan.region.id` | `LOAN_REGION_ID` | `local` | task env |
 | `loan.environment` | `LOAN_ENVIRONMENT` | `local` | task env |
 | `spring.profiles.active` | `SPRING_PROFILES_ACTIVE` | `local` | task env (`aws`) |
-| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/loansvc` | SSM (regional cluster endpoint) |
-| `spring.datasource.username` / `password` | `SPRING_DATASOURCE_USERNAME` / `_PASSWORD` | from untracked `.env` | Secret |
+| `spring.datasource.url` | — (built as `jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require`; `sslmode` off locally) | `localhost` / `5432` / `loanservice` | task `Secrets` from SSM `/<service>-<env>/db/{host,port,name}` (regional endpoint) |
+| `spring.datasource.username` / `password` | `DB_USERNAME` / `DB_PASSWORD` | `loansvc` / `localdev` (docker-compose) | task `Secrets` from this region's Secrets Manager secret or replica |
+| `loan.db.write-forward-consistency` | `LOAN_DB_WRITEFORWARDCONSISTENCY` | unset (no `SET`) | task env: `session` in secondary regions only (W3) |
 | `spring.datasource.hikari.maximum-pool-size` | `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` | `10` | SSM |
 | `spring.datasource.hikari.connection-timeout` | `…_CONNECTIONTIMEOUT` | `3000` (ms) | SSM |
 | `loan.db.statement-timeout` | `LOAN_DB_STATEMENTTIMEOUT` | `5s` | SSM |
 | `loan.db.lock-timeout` | `LOAN_DB_LOCKTIMEOUT` | `2s` | SSM |
 | `loan.db.connect-timeout` / `socket-timeout` | `LOAN_DB_CONNECTTIMEOUT` / `LOAN_DB_SOCKETTIMEOUT` | `3s` / `10s` | SSM |
 | `spring.flyway.enabled` | `SPRING_FLYWAY_ENABLED` | `true` | task env (`true` in writer region only, W1) |
+| `spring.flyway.schemas` | — | `loan_svc` | committed |
 | `spring.flyway.locations` | — | `classpath:db/migration` (+ `classpath:db/seed` in local/test/integration) | profile |
 | `loan.eligibility.dti-limit-default` | — | `43` | committed (was `dti.default`) |
 | `loan.eligibility.dti-limit-heloc` | — | `45` | committed (was `dti.heloc`) |

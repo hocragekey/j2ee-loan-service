@@ -297,6 +297,9 @@ Resources:
       Family: !Ref ClusterParameterGroupFamily
       Parameters:
         rds.force_ssl: "1"
+        # Default read consistency for write-forwarded sessions in the
+        # secondary region (read-your-writes per session). The app also sets it
+        # per connection from LOAN_DB_WRITEFORWARDCONSISTENCY (service.yaml).
         apg_write_forward.consistency_mode: session
 
   GlobalCluster:
@@ -525,6 +528,10 @@ Outputs:
           - secret
           - !Select [6, !Split [":", !Ref PrimaryDbSecretArn]]
     Export: { Name: !Sub "${AWS::StackName}-DbSecretArn" }
+  DbSecurityGroupId:
+    Description: Aurora security group (ingress 5432 only from the network stack's app security group).
+    Value: !Ref DbSecurityGroup
+    Export: { Name: !Sub "${AWS::StackName}-DbSecurityGroupId" }
   DataKeyArn:
     Description: KMS key ARN used for Aurora and the secret in this region.
     Value: !If [IsPrimary, !GetAtt DataKey.Arn, !GetAtt DataKeyReplica.Arn]
