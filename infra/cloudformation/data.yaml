@@ -257,6 +257,9 @@ Resources:
 
   DbSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
+    # Follows the cluster so a retained cluster keeps its dependencies.
+    DeletionPolicy: !If [RetainData, Retain, Delete]
+    UpdateReplacePolicy: !If [RetainData, Retain, Delete]
     Properties:
       DBSubnetGroupName: !Sub "${ServiceName}-${EnvironmentName}-data"
       DBSubnetGroupDescription: !Sub "${ServiceName}-${EnvironmentName} private data subnets (two AZs)"
@@ -264,6 +267,9 @@ Resources:
 
   DbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    # Follows the cluster so a retained cluster keeps its dependencies.
+    DeletionPolicy: !If [RetainData, Retain, Delete]
+    UpdateReplacePolicy: !If [RetainData, Retain, Delete]
     Properties:
       GroupName: !Sub "${ServiceName}-${EnvironmentName}-aurora"
       GroupDescription: Aurora PostgreSQL - inbound only from loan-service ECS tasks
@@ -283,6 +289,9 @@ Resources:
 
   ClusterParameterGroup:
     Type: AWS::RDS::DBClusterParameterGroup
+    # Follows the cluster so a retained cluster keeps its dependencies.
+    DeletionPolicy: !If [RetainData, Retain, Delete]
+    UpdateReplacePolicy: !If [RetainData, Retain, Delete]
     Properties:
       Description: !Sub "${ServiceName}-${EnvironmentName} Aurora PostgreSQL cluster parameters"
       Family: !Ref ClusterParameterGroupFamily
@@ -352,6 +361,9 @@ Resources:
 
   MonitoringRole:
     Type: AWS::IAM::Role
+    # Follows the cluster so a retained cluster keeps its dependencies.
+    DeletionPolicy: !If [RetainData, Retain, Delete]
+    UpdateReplacePolicy: !If [RetainData, Retain, Delete]
     Properties:
       Description: RDS Enhanced Monitoring publishing role.
       AssumeRolePolicyDocument:
