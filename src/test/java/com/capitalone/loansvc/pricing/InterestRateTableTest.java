@@ -1,6 +1,6 @@
 package com.capitalone.loansvc.pricing;
 
-import com.capitalone.loansvc.db.DbUtil;
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
 import org.junit.After;
 import org.junit.Before;
@@ -15,7 +15,7 @@ import static org.junit.Assert.assertEquals;
 /** Characterization of InterestRateTable: RATE_TBL first, then in-code fallback, then 12%. */
 public class InterestRateTableTest {
 
-    private final InterestRateTable table = new InterestRateTable();
+    private final InterestRateTable table = TestBeans.get(InterestRateTable.class);
 
     @Before
     public void setUp() {
@@ -63,7 +63,7 @@ public class InterestRateTableTest {
     }
 
     private static void execute(String sql) throws Exception {
-        Connection c = DbUtil.getConnection();
+        Connection c = LegacyTestState.connection();
         try {
             PreparedStatement ps = c.prepareStatement(sql);
             ps.executeUpdate();

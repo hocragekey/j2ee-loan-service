@@ -1,9 +1,9 @@
 package com.capitalone.loansvc.notify;
 
-import com.capitalone.loansvc.db.DbUtil;
+import com.capitalone.loansvc.testsupport.LegacyTestState;
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.manager.LoanApplicationManager;
 import com.capitalone.loansvc.model.LoanApplication;
-import com.capitalone.loansvc.util.AppContext;
 import com.capitalone.loansvc.util.LogCapture;
 import org.junit.After;
 import org.junit.Before;
@@ -23,8 +23,7 @@ public class NotificationDispatcherTest {
 
     @Before
     public void setUp() {
-        DbUtil.reset();
-        AppContext.reload();
+        LegacyTestState.resetDatabase();
         capture = LogCapture.start();
     }
 
@@ -35,7 +34,7 @@ public class NotificationDispatcherTest {
 
     @Test
     public void emailAddressAndBodyAreNotLoggedOrAudited() throws Exception {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication app = new LoanApplication();
         app.setCustomerId("C10001");
         app.setProductCode("AUTO");
@@ -61,7 +60,7 @@ public class NotificationDispatcherTest {
 
     @Test
     public void ficoAndBureauScoreAreNotLoggedOrAudited() throws Exception {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication app = new LoanApplication();
         app.setCustomerId("C10001");
         app.setProductCode("AUTO");

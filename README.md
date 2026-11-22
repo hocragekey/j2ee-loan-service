@@ -1,6 +1,6 @@
 # Legacy Loan Service (J2EE-style WAR)
 
-On-premise style **Java 8** loan origination monolith (Capital One hypothetical scenario for Cognition / Devin interview demos).
+Loan origination monolith, now on **Java 21 + Spring Boot 3** (Phase 3) with the legacy JSP/servlet surface retained (Capital One hypothetical scenario for Cognition / Devin interview demos).
 
 Single deployable WAR: servlets, JSP scriptlets, JDBC, and domain managers for loan eligibility and underwriting.
 
@@ -8,7 +8,7 @@ Single deployable WAR: servlets, JSP scriptlets, JDBC, and domain managers for l
 |-----------|-------|
 | Service tier | **`standard`** (assumed — pending owner confirmation; see [enterprise-engineering-standards](https://github.com/hocragekey/enterprise-engineering-standards)) |
 | Standards | [hocragekey/enterprise-engineering-standards](https://github.com/hocragekey/enterprise-engineering-standards) |
-| CI | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — `mvn -B verify` on Java 8 |
+| CI | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — `mvn -B verify` on Java 21 |
 
 ## Deployed environments (for agents / Devin)
 
@@ -24,12 +24,12 @@ Single deployable WAR: servlets, JSP scriptlets, JDBC, and domain managers for l
 
 | Piece | Choice |
 |-------|--------|
-| Language | Java 8 |
-| Packaging | Maven WAR (`loan-service.war`) |
-| Web | Servlet 3.1 + JSP |
-| Data | Embedded H2 (Oracle-ish table names) |
-| Logging | Log4j 1.x |
-| Tests | JUnit 4 |
+| Language | Java 21 |
+| Packaging | Spring Boot 3.5 executable WAR (`loan-service.war`, embedded Tomcat 10.1) |
+| Web | Jakarta Servlet 6 + JSP (legacy servlets registered by `LegacyWebConfig`) |
+| Data | In-memory H2 2.x via an injected `DataSource` (Phase 4: Aurora PostgreSQL) |
+| Logging | SLF4J/Logback, ECS JSON to stdout with `requestId` (`OBS-01`) |
+| Tests | JUnit 4 suite on the JUnit Platform (vintage engine) + JaCoCo |
 
 ## Local build & test
 
@@ -38,28 +38,40 @@ mvn test
 mvn package
 ```
 
-Quick UI against embedded Jetty (dev only):
+Run locally (requires JDK 21):
 
 ```bash
-mvn jetty:run
-# if 8080 is busy: mvn jetty:run "-Djetty.port=8088"
+mvn spring-boot:run                     # or: java -jar target/loan-service.war
+# if 8080 is busy: SERVER_PORT=8088 mvn spring-boot:run
 ```
+
+Configuration comes from environment variables (`PLAT-06`), e.g. `SERVER_PORT`,
+`SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`,
+`LOAN_BUREAU_MOCK`, `LOAN_NOTIFY_ENABLED`, `LOAN_REGION_ID`. Defaults live in
+`src/main/resources/application.properties` and match the old `ConfigHolder` values.
+
+Black-box parity check against a running instance: `scripts/parity-smoke.sh http://localhost:8080`
+(diff its output against the same script run on the previous build).
 
 Open http://localhost:8080/loan-service/
 
 ## CI and change control
 
-- **CI (`DEL-03`, `DEL-09`):** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `mvn -B verify` (Temurin JDK 8, Ubuntu 24.04) on every pull request to `main`, every push to `main`, and on manual dispatch. Actions are pinned to commit SHAs. Reproduce locally with `mvn -B verify`.
+- **CI (`DEL-03`, `DEL-09`):** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `mvn -B verify` (Temurin JDK 21, Ubuntu 24.04) on every pull request to `main`, every push to `main`, and on manual dispatch. Actions are pinned to commit SHAs. Reproduce locally with `mvn -B verify`.
 - **Pull requests (`DEL-01`, `DEL-02`):** all changes land on `main` through a pull request. The [PR template](.github/pull_request_template.md) follows the standards repo's `templates/pr-body.md`; list the control IDs the change touches and the evidence.
-- **Branch protection (`DEL-01`, `DEL-04`):** `main` must have a ruleset that requires a pull request with at least one approving human review, requires the `mvn verify (Java 8)` status check to pass, and blocks force pushes and deletion. This is a repository-admin setting (Settings → Rules → Rulesets); it is not stored in the repo.
+- **Branch protection (`DEL-01`, `DEL-04`):** `main` must have a ruleset that requires a pull request with at least one approving human review, requires the `mvn verify (Java 21)` status check to pass, and blocks force pushes and deletion. This is a repository-admin setting (Settings → Rules → Rulesets); it is not stored in the repo.
 
 ## Integration environment (legacy operating model)
+
+> **Phase 3 note:** the WAR now needs Java 21 and a Jakarta EE 10 container. The Ansible roles below
+> still install Java 8 + Tomcat 9, so they can only deploy pre-Phase-3 builds. The supported runtime
+> is the container image (`Dockerfile`, ECS/Fargate per `PLAT-01`).
 
 Demo story: the **EC2 VM is already provisioned** (data-center stand-in). This repository configures it with **Ansible** and deploys one WAR to Tomcat. One-time AWS CLI bootstrap creates the host; day-2 work is Ansible.
 
 ```text
 AWS CLI (once)  →  EC2 integration host
-Ansible site.yml →  Java 8 + Tomcat + loan-service.war
+Ansible site.yml →  Java 8 + Tomcat 9 + loan-service.war   (legacy path; not compatible with the Phase 3 WAR, see below)
 HTTP             →  http://<public-ip>:8080/loan-service/
 ```
 
@@ -208,5 +220,5 @@ The CI equivalent (GitHub OIDC role, no stored AWS keys) is documented at the bo
 
 - `LoanApplicationManager` — application processing entry point
 - `EligibilityRules` — loan eligibility evaluation
-- Web entry points: `/apply`, `/eligibility`, `/underwrite`, `/customer` (the unauthenticated `/admin/reload` endpoint was removed; tests reset the in-memory DB with `AppContext.reload()` / `DbUtil.reset()`)
-- `SecurityHeadersFilter` adds `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` to every response. Local `mvn jetty:run` is plain HTTP; HTTPS/HSTS belong at the deployed load balancer and are not configured yet
+- Web entry points: `/apply`, `/eligibility`, `/underwrite`, `/customer` (the unauthenticated `/admin/reload` endpoint was removed; tests reset the in-memory DB with `LegacyTestState.resetDatabase()`)
+- `SecurityHeadersFilter` adds `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` to every response. Local `mvn spring-boot:run` is plain HTTP; HTTPS/HSTS belong at the deployed load balancer and are not configured yet

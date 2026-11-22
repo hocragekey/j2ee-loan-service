@@ -1,9 +1,9 @@
 package com.capitalone.loansvc.manager;
 
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.model.UnderwritingDecision;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
-import com.capitalone.loansvc.util.AppContext;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -93,7 +93,7 @@ public class SeedCustomerGoldenTest {
         app.setCollateralValue(new BigDecimal(row.get("collateralValue")));
         app.setPurposeCode(row.get("purposeCode"));
 
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication r = mgr.processApplication(app);
 
         assertEquals("eligibilityCode", row.get("eligibilityCode"), r.getEligibilityCode());

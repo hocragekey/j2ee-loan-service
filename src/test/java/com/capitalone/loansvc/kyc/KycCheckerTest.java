@@ -1,5 +1,6 @@
 package com.capitalone.loansvc.kyc;
 
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.testsupport.TestData;
@@ -14,7 +15,7 @@ import static org.junit.Assert.assertTrue;
 /** Characterization of KYC result codes OK/WL/ERR, watchlist matching and employer defaulting. */
 public class KycCheckerTest {
 
-    private final KycChecker kyc = new KycChecker();
+    private final KycChecker kyc = TestBeans.get(KycChecker.class);
     private final WatchlistScanner scanner = new WatchlistScanner();
 
     @Before

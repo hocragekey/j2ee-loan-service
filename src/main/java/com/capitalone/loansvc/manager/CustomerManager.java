@@ -3,10 +3,20 @@ package com.capitalone.loansvc.manager;
 import com.capitalone.loansvc.db.CustomerDao;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.util.StringHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
+@Service
 public class CustomerManager {
 
-    private final CustomerDao customerDao = new CustomerDao();
+    private static final Logger LOG = LoggerFactory.getLogger(CustomerManager.class);
+
+    private final CustomerDao customerDao;
+
+    public CustomerManager(CustomerDao customerDao) {
+        this.customerDao = customerDao;
+    }
 
     public Customer getCustomer(String custId) {
         if (StringHelper.isEmpty(custId)) {
@@ -23,7 +33,7 @@ public class CustomerManager {
             customerDao.save(cust);
             return "OK";
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("CustomerManager.saveCustomer failed", e);
             return "ERR";
         }
     }

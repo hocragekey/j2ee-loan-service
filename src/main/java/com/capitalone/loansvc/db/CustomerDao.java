@@ -2,19 +2,33 @@ package com.capitalone.loansvc.db;
 
 import com.capitalone.loansvc.model.Customer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Repository;
+
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 
+@Repository
 public class CustomerDao {
+
+    private static final Logger LOG = LoggerFactory.getLogger(CustomerDao.class);
+
+    private final DataSource dataSource;
+
+    public CustomerDao(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
 
     public Customer findById(String custId) {
         Connection c = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement(
                     "SELECT CUST_ID, FIRST_NM, LAST_NM, SSN_LAST4, EMP_NM, EMP_STATUS, " +
                     "ANNUAL_INCOME, MONTHLY_DEBT, EMAIL_ADDR, PHONE_NBR, CREATE_TS " +
@@ -41,12 +55,12 @@ public class CustomerDao {
             }
             return cust;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("CustomerDao.findById failed", e);
             return null;
         } finally {
-            DbUtil.closeQuietly(rs);
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(rs);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 
@@ -54,7 +68,7 @@ public class CustomerDao {
         Connection c = null;
         PreparedStatement ps = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement(
                     "MERGE INTO CUST_ACCT (CUST_ID, FIRST_NM, LAST_NM, SSN_LAST4, EMP_NM, EMP_STATUS, " +
                     "ANNUAL_INCOME, MONTHLY_DEBT, EMAIL_ADDR, PHONE_NBR, CREATE_TS) KEY(CUST_ID) " +
@@ -74,8 +88,8 @@ public class CustomerDao {
         } catch (Exception e) {
             throw new RuntimeException("CustomerDao.save failed", e);
         } finally {
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 }

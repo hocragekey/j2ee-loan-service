@@ -1,12 +1,12 @@
 package com.capitalone.loansvc.manager;
 
+import com.capitalone.loansvc.testsupport.TestBeans;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.pricing.RateAdjustmentHelper;
-import com.capitalone.loansvc.testsupport.ConfigHolderRule;
+import com.capitalone.loansvc.testsupport.LoanPropertiesRule;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.testsupport.TestData;
-import com.capitalone.loansvc.util.AppContext;
 import com.capitalone.loansvc.util.InputValidationException;
 import org.junit.Before;
 import org.junit.Rule;
@@ -23,7 +23,7 @@ import static org.junit.Assert.fail;
 public class LoanApplicationManagerTest {
 
     @Rule
-    public final ConfigHolderRule config = new ConfigHolderRule();
+    public final LoanPropertiesRule config = new LoanPropertiesRule();
 
     @Before
     public void setUp() {
@@ -32,7 +32,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void watchlistCustomerReturnsWlAndDeclines() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         String code = mgr.checkEligibilityOnly(
                 "C10004", "AUTO", "15000", "48", "20000", "AUTO");
         assertEquals("WL", code);
@@ -40,7 +40,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void happyPathApprovesSeedCustomer() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication app = new LoanApplication();
         app.setCustomerId("C10001");
         app.setProductCode("AUTO");
@@ -63,7 +63,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void selfEmployedGetsUndocumentedRateBump() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication employed = new LoanApplication();
         employed.setApplicationId("T-MGR-EMP");
         employed.setCustomerId("C10001");
@@ -102,7 +102,7 @@ public class LoanApplicationManagerTest {
     @Test
     public void missingEmployerStillProcessesAsEmployed() {
         // C10002 has null employer name in seed data
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication app = new LoanApplication();
         app.setCustomerId("C10002");
         app.setProductCode("AUTO");
@@ -121,7 +121,7 @@ public class LoanApplicationManagerTest {
     @Test
     public void nullApplicationThrows() {
         try {
-            AppContext.getLoanApplicationManager().processApplication(null);
+            TestBeans.get(LoanApplicationManager.class).processApplication(null);
             fail("expected RuntimeException");
         } catch (RuntimeException expected) {
             assertEquals("application required", expected.getMessage());
@@ -130,7 +130,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void unknownCustomerIsErrAndNotPersisted() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication app = TestData.application("T-MGR-NOCUST", "AUTO", "18000", 60);
         app.setCustomerId("C99999");
         LoanApplication result = mgr.processApplication(app);
@@ -143,7 +143,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void kycErrorReturnsEarlyWithoutScoringOrPersisting() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         Customer cust = TestData.employedCustomer("90000", "500");
         cust.setFirstName(null);
         LoanApplication app = TestData.application("T-MGR-KYCERR", "AUTO", "18000", 60);
@@ -159,7 +159,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void suppliedCustomerWinsOverCustomerId() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         Customer cust = TestData.employedCustomer("120000", "500");
         cust.setCustomerId("T-CUST-INLINE");
         LoanApplication app = TestData.application("T-MGR-INLINE", "PERSONAL", "10000", 36);
@@ -174,7 +174,7 @@ public class LoanApplicationManagerTest {
     @Test
     public void bureauMockOffScoresZeroAndDeclines() {
         config.set("bureau.mock", "N");
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication app = TestData.application("T-MGR-NOMOCK", "PERSONAL", "10000", 36);
         app.setCustomerId("C10001");
         app.setCollateralType("NONE");
@@ -189,7 +189,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void zeroAmountIsErrEligibilityAndDeclined() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication app = TestData.application("T-MGR-ZERO", "PERSONAL", "0", 36);
         app.setCustomerId("C10001");
         app.setCollateralType("NONE");
@@ -203,7 +203,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void reprocessingSameIdFallsBackToUpdate() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication first = TestData.application("T-MGR-REPROC", "PERSONAL", "10000", 36);
         first.setCustomerId("C10001");
         first.setCollateralType("NONE");
@@ -224,7 +224,7 @@ public class LoanApplicationManagerTest {
 
     @Test
     public void eligibilityOnlyAcceptsValidInputUnchanged() {
-        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         assertEquals("Y", mgr.checkEligibilityOnly("C10001", "AUTO", "20000", "48", "28000", "AUTO"));
         assertEquals("Y", mgr.checkEligibilityOnly("C10001", "auto", "20,000", "48", "28000", "auto"));
         assertEquals("ERR", mgr.checkEligibilityOnly("C99999", "AUTO", "20000", "48", "28000", "AUTO"));
@@ -253,7 +253,7 @@ public class LoanApplicationManagerTest {
     private static void assertEligibilityRejected(String cust, String prod, String amt, String term,
                                                   String cval, String ctype, String field) {
         try {
-            AppContext.getLoanApplicationManager().checkEligibilityOnly(cust, prod, amt, term, cval, ctype);
+            TestBeans.get(LoanApplicationManager.class).checkEligibilityOnly(cust, prod, amt, term, cval, ctype);
             fail("expected InputValidationException for " + field);
         } catch (InputValidationException e) {
             assertTrue(e.getMessage(), e.getMessage().startsWith(field));

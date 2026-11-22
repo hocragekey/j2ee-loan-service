@@ -1,11 +1,13 @@
 package com.capitalone.loansvc.pricing;
 
+import org.springframework.stereotype.Component;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.util.MoneyHelper;
 
 import java.math.BigDecimal;
 
+@Component
 public class RateAdjustmentHelper {
 
     /**

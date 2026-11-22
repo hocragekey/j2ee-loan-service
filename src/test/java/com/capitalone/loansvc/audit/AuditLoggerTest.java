@@ -1,6 +1,7 @@
 package com.capitalone.loansvc.audit;
 
-import com.capitalone.loansvc.db.DbUtil;
+import com.capitalone.loansvc.testsupport.TestBeans;
+import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.util.LogCapture;
 import org.junit.After;
 import org.junit.Before;
@@ -16,8 +17,7 @@ public class AuditLoggerTest {
 
     @Before
     public void setUp() {
-        DbUtil.reset();
-        DbUtil.initSchema();
+        LegacyTestState.resetDatabase();
         capture = LogCapture.start();
     }
 
@@ -28,7 +28,7 @@ public class AuditLoggerTest {
 
     @Test
     public void redactsPiiBeforeLog4jAndAuditTable() throws Exception {
-        new AuditLogger().log("LA1", "TEST", "decline fico=598 sent to jane.nguyen@example.com\nforged");
+        TestBeans.get(AuditLogger.class).log("LA1", "TEST", "decline fico=598 sent to jane.nguyen@example.com\nforged");
         String audit = LogCapture.auditMessages("LA1");
         assertEquals("TEST decline fico=[REDACTED] sent to j***@example.com forged\n", audit);
         String logs = capture.all();
@@ -39,8 +39,8 @@ public class AuditLoggerTest {
 
     @Test
     public void complianceEventsGoToLog4jNotStdout() throws Exception {
-        new ComplianceEventWriter().write("LA2", "UW_APPROVE");
-        assertTrue(capture.log4jOnly().contains("COMPLIANCE_EVT|LA2|UW_APPROVE"));
+        TestBeans.get(ComplianceEventWriter.class).write("LA2", "UW_APPROVE");
+        assertTrue(capture.loggedOnly().contains("COMPLIANCE_EVT|LA2|UW_APPROVE"));
         assertFalse(capture.stdoutOnly().contains("COMPLIANCE_EVT"));
         assertEquals("COMPLIANCE UW_APPROVE\n", LogCapture.auditMessages("LA2"));
     }

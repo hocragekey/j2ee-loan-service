@@ -6,9 +6,9 @@ name: Container image
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, devin/1795380000-demo-combined]
   push:
-    branches: [main]
+    branches: [main, devin/1795380000-demo-combined]
   workflow_dispatch:
 
 permissions:
@@ -65,7 +65,10 @@ jobs:
           curl -fsS -o /dev/null http://localhost:8080/loan-service/
           curl -fsS -X POST \
             -d 'customerId=C10001&productCode=AUTO&amount=20000&termMonths=48&collateralType=AUTO&collateralValue=28000' \
-            http://localhost:8080/loan-service/eligibility | grep -q 'Customer: C10001'
+            http://localhost:8080/loan-service/eligibility > eligibility.html
+          grep -q 'Customer: C10001' eligibility.html
+          grep -q 'Code: Y' eligibility.html
+          test "$(docker inspect --format '{{.Config.User}}' "${IMAGE_NAME}:${GITHUB_SHA}")" = '10001:10001'
           docker rm -f loan-service
 
       # Full report (OS + Java libraries, all severities) -> code scanning + job summary.
@@ -106,16 +109,15 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Gate: fail on fixable HIGH/CRITICAL in OS packages (base image hygiene).
-      # Java library findings (Log4j 1.2.17, H2 1.4.200) are report-only until the
-      # dependency upgrade (SEC-04) lands; then add `library` to vuln-type.
-      - name: Trivy gate (OS packages, fixable HIGH/CRITICAL)
+      # Gate: fail on fixable HIGH/CRITICAL in OS packages and Java libraries (SEC-04,
+      # PLAT-08). Enabled now that Log4j 1.x is gone and H2 is on 2.x (Phase 3).
+      - name: Trivy gate (OS + Java libraries, fixable HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: table
-          vuln-type: os
+          vuln-type: os,library
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'

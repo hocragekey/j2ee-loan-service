@@ -3,11 +3,22 @@ package com.capitalone.loansvc.kyc;
 import com.capitalone.loansvc.audit.AuditLogger;
 import com.capitalone.loansvc.model.Customer;
 import com.capitalone.loansvc.util.StringHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
+@Component
 public class KycChecker {
 
-    private final WatchlistScanner watchlistScanner = new WatchlistScanner();
-    private final AuditLogger auditLogger = new AuditLogger();
+    private static final Logger LOG = LoggerFactory.getLogger(KycChecker.class);
+
+    private final WatchlistScanner watchlistScanner;
+    private final AuditLogger auditLogger;
+
+    public KycChecker(WatchlistScanner watchlistScanner, AuditLogger auditLogger) {
+        this.watchlistScanner = watchlistScanner;
+        this.auditLogger = auditLogger;
+    }
 
     /**
      * Returns "OK", "WL", or "ERR" — stringly typed on purpose.
@@ -22,7 +33,7 @@ public class KycChecker {
         }
         if (StringHelper.isEmpty(cust.getSsnLast4()) || cust.getSsnLast4().length() != 4) {
             // legacy: soft-fail continues in some callers
-            System.out.println("KycChecker: weak SSN for " + cust.getCustomerId());
+            LOG.info("KycChecker: weak SSN for " + cust.getCustomerId());
         }
         if (watchlistScanner.isHit(cust)) {
             auditLogger.log(applId, "KYC", "watchlist hit");

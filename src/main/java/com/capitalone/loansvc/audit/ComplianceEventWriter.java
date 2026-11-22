@@ -1,11 +1,18 @@
 package com.capitalone.loansvc.audit;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
+@Component
 public class ComplianceEventWriter {
 
-    private static final Logger LOG = Logger.getLogger(ComplianceEventWriter.class);
-    private final AuditLogger auditLogger = new AuditLogger();
+    private static final Logger LOG = LoggerFactory.getLogger(ComplianceEventWriter.class);
+    private final AuditLogger auditLogger;
+
+    public ComplianceEventWriter(AuditLogger auditLogger) {
+        this.auditLogger = auditLogger;
+    }
 
     public void write(String applId, String code) {
         // dual-write style noise

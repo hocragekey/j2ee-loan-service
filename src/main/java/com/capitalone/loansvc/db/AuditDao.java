@@ -1,16 +1,30 @@
 package com.capitalone.loansvc.db;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Repository;
+
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 
+@Repository
 public class AuditDao {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AuditDao.class);
+
+    private final DataSource dataSource;
+
+    public AuditDao(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
 
     public void write(String applId, String evtType, String msg) {
         Connection c = null;
         PreparedStatement ps = null;
         try {
-            c = DbUtil.getConnection();
+            c = dataSource.getConnection();
             ps = c.prepareStatement(
                     "INSERT INTO AUDIT_EVT (APPL_ID, EVT_TYPE, EVT_MSG, EVT_TS) VALUES (?,?,?,?)");
             ps.setString(1, applId);
@@ -20,10 +34,10 @@ public class AuditDao {
             ps.executeUpdate();
         } catch (Exception e) {
             // swallow - audit should never break the loan flow (legacy attitude)
-            System.out.println("AuditDao write failed: " + e.getMessage());
+            LOG.warn("AuditDao write failed: " + e.getMessage());
         } finally {
-            DbUtil.closeQuietly(ps);
-            DbUtil.closeQuietly(c);
+            Jdbc.closeQuietly(ps);
+            Jdbc.closeQuietly(c);
         }
     }
 }

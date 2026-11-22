@@ -1,9 +1,14 @@
 package com.capitalone.loansvc.credit;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Parses faux bureau pipe-delimited payloads: SCORE|FACTOR1|FACTOR2
  */
 public class BureauResponseParser {
+
+    private static final Logger LOG = LoggerFactory.getLogger(BureauResponseParser.class);
 
     public int parseScore(String raw) {
         if (raw == null || raw.length() == 0) {
@@ -13,7 +18,7 @@ public class BureauResponseParser {
             String[] parts = raw.split("\\|");
             return Integer.parseInt(parts[0].trim());
         } catch (Exception e) {
-            System.out.println("BureauResponseParser bad payload: " + raw);
+            LOG.warn("BureauResponseParser bad payload: " + raw);
             return 0;
         }
     }

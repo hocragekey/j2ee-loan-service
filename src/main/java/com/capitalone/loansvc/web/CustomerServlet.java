@@ -1,17 +1,23 @@
 package com.capitalone.loansvc.web;
 
+import com.capitalone.loansvc.manager.CustomerManager;
 import com.capitalone.loansvc.model.Customer;
-import com.capitalone.loansvc.util.AppContext;
 import com.capitalone.loansvc.util.LoanInputValidator;
 import com.capitalone.loansvc.util.StringHelper;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 public class CustomerServlet extends HttpServlet {
+
+    private final transient CustomerManager customerManager;
+
+    public CustomerServlet(CustomerManager customerManager) {
+        this.customerManager = customerManager;
+    }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
@@ -28,7 +34,7 @@ public class CustomerServlet extends HttpServlet {
                 return;
             }
             custId = custId.trim();
-            cust = AppContext.getCustomerManager().getCustomer(custId);
+            cust = customerManager.getCustomer(custId);
         }
         req.setAttribute("customer", cust);
         req.setAttribute("customerId", custId);

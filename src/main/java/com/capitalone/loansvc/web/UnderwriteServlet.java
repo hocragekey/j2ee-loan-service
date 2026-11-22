@@ -1,17 +1,23 @@
 package com.capitalone.loansvc.web;
 
+import com.capitalone.loansvc.manager.LoanApplicationManager;
 import com.capitalone.loansvc.model.LoanApplication;
-import com.capitalone.loansvc.util.AppContext;
 import com.capitalone.loansvc.util.LoanInputValidator;
 import com.capitalone.loansvc.util.StringHelper;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 public class UnderwriteServlet extends HttpServlet {
+
+    private final transient LoanApplicationManager loanApplicationManager;
+
+    public UnderwriteServlet(LoanApplicationManager loanApplicationManager) {
+        this.loanApplicationManager = loanApplicationManager;
+    }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
@@ -26,7 +32,7 @@ public class UnderwriteServlet extends HttpServlet {
             resp.getWriter().println("applId invalid");
             return;
         }
-        LoanApplication app = AppContext.getLoanApplicationManager().getApplication(applId.trim());
+        LoanApplication app = loanApplicationManager.getApplication(applId.trim());
         req.setAttribute("app", app);
         req.getRequestDispatcher("/underwriting-result.jsp").forward(req, resp);
     }

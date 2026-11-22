@@ -1,8 +1,10 @@
 package com.capitalone.loansvc.web;
 
-import com.capitalone.loansvc.db.DbUtil;
+import com.capitalone.loansvc.testsupport.TestBeans;
+import com.capitalone.loansvc.manager.CustomerManager;
+import com.capitalone.loansvc.manager.LoanApplicationManager;
+import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.model.LoanApplication;
-import com.capitalone.loansvc.util.AppContext;
 import com.capitalone.loansvc.web.ServletTestSupport.FakeRequest;
 import com.capitalone.loansvc.web.ServletTestSupport.FakeResponse;
 import org.junit.Before;
@@ -20,8 +22,7 @@ public class InputValidationServletTest {
 
     @Before
     public void setUp() {
-        DbUtil.reset();
-        AppContext.reload();
+        LegacyTestState.resetDatabase();
     }
 
     private static FakeRequest validApply() {
@@ -39,7 +40,7 @@ public class InputValidationServletTest {
     public void applyValidInputIsProcessed() throws Exception {
         FakeRequest req = validApply();
         FakeResponse resp = new FakeResponse();
-        new LoanApplyServlet().doPost(req.proxy(), resp.proxy());
+        new LoanApplyServlet(TestBeans.get(LoanApplicationManager.class)).doPost(req.proxy(), resp.proxy());
         assertEquals("/underwriting-result.jsp", req.forwardedTo);
         assertEquals(200, resp.status);
         LoanApplication app = (LoanApplication) req.attributes.get("app");
@@ -75,7 +76,7 @@ public class InputValidationServletTest {
 
     private static void assertApplyRejected(FakeRequest req, String expectedError) throws Exception {
         FakeResponse resp = new FakeResponse();
-        new LoanApplyServlet().doPost(req.proxy(), resp.proxy());
+        new LoanApplyServlet(TestBeans.get(LoanApplicationManager.class)).doPost(req.proxy(), resp.proxy());
         assertEquals("/apply.jsp", req.forwardedTo);
         assertEquals(400, resp.status);
         String error = (String) req.attributes.get("error");
@@ -89,7 +90,7 @@ public class InputValidationServletTest {
                 .param("customerId", "C10001").param("productCode", "AUTO").param("amount", "20000")
                 .param("termMonths", "48").param("collateralType", "AUTO").param("collateralValue", "28000");
         FakeResponse resp = new FakeResponse();
-        new EligibilityServlet().doPost(req.proxy(), resp.proxy());
+        new EligibilityServlet(TestBeans.get(LoanApplicationManager.class)).doPost(req.proxy(), resp.proxy());
         assertEquals("/eligibility-result.jsp", req.forwardedTo);
         assertEquals(200, resp.status);
         assertEquals("Y", req.attributes.get("eligCode"));
@@ -102,7 +103,7 @@ public class InputValidationServletTest {
                 .param("customerId", "C10001").param("productCode", "<script>").param("amount", "20000")
                 .param("termMonths", "x").param("collateralType", "AUTO").param("collateralValue", "28000");
         FakeResponse resp = new FakeResponse();
-        new EligibilityServlet().doPost(req.proxy(), resp.proxy());
+        new EligibilityServlet(TestBeans.get(LoanApplicationManager.class)).doPost(req.proxy(), resp.proxy());
         assertEquals("/eligibility-result.jsp", req.forwardedTo);
         assertEquals(400, resp.status);
         assertEquals("ERR", req.attributes.get("eligCode"));
@@ -118,7 +119,7 @@ public class InputValidationServletTest {
     public void eligibilityMissingCustomerKeepsExistingMessage() throws Exception {
         FakeRequest req = new FakeRequest().param("productCode", "AUTO");
         FakeResponse resp = new FakeResponse();
-        new EligibilityServlet().doPost(req.proxy(), resp.proxy());
+        new EligibilityServlet(TestBeans.get(LoanApplicationManager.class)).doPost(req.proxy(), resp.proxy());
         assertEquals("ERR", req.attributes.get("eligCode"));
         assertEquals("missing customer", req.attributes.get("message"));
     }
@@ -127,13 +128,13 @@ public class InputValidationServletTest {
     public void customerLookupValidAndInvalidIds() throws Exception {
         FakeRequest ok = new FakeRequest().param("customerId", "C10001");
         FakeResponse okResp = new FakeResponse();
-        new CustomerServlet().doGet(ok.proxy(), okResp.proxy());
+        new CustomerServlet(TestBeans.get(CustomerManager.class)).doGet(ok.proxy(), okResp.proxy());
         assertEquals(200, okResp.status);
         assertTrue(ok.attributes.get("customer") != null);
 
         FakeRequest bad = new FakeRequest().param("customerId", "<script>alert(1)</script>");
         FakeResponse badResp = new FakeResponse();
-        new CustomerServlet().doGet(bad.proxy(), badResp.proxy());
+        new CustomerServlet(TestBeans.get(CustomerManager.class)).doGet(bad.proxy(), badResp.proxy());
         assertEquals("/customer.jsp", bad.forwardedTo);
         assertEquals(400, badResp.status);
         assertNull(bad.attributes.get("customer"));
@@ -145,7 +146,7 @@ public class InputValidationServletTest {
     public void underwriteRejectsMalformedApplicationId() throws Exception {
         FakeRequest req = new FakeRequest().param("applId", "LA1' OR '1'='1");
         FakeResponse resp = new FakeResponse();
-        new UnderwriteServlet().doGet(req.proxy(), resp.proxy());
+        new UnderwriteServlet(TestBeans.get(LoanApplicationManager.class)).doGet(req.proxy(), resp.proxy());
         assertEquals(400, resp.status);
         assertEquals("applId invalid", resp.body.toString().trim());
         assertFalse(resp.body.toString().contains("OR"));
@@ -156,7 +157,7 @@ public class InputValidationServletTest {
     public void underwriteLooksUpWellFormedApplicationId() throws Exception {
         FakeRequest req = new FakeRequest().param("applId", "LA123");
         FakeResponse resp = new FakeResponse();
-        new UnderwriteServlet().doGet(req.proxy(), resp.proxy());
+        new UnderwriteServlet(TestBeans.get(LoanApplicationManager.class)).doGet(req.proxy(), resp.proxy());
         assertEquals(200, resp.status);
         assertEquals("/underwriting-result.jsp", req.forwardedTo);
     }
