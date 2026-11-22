@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, devin/1795380000-demo-combined]
+    branches: [main, devin/1795380000-demo-combined, devin/1795380152-phase3-boot3]
   push:
-    branches: [main, devin/1795380000-demo-combined]
+    branches: [main, devin/1795380000-demo-combined, devin/1795380152-phase3-boot3]
   workflow_dispatch:
 
 permissions:

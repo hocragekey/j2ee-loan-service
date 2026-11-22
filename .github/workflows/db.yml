@@ -10,7 +10,7 @@ on:
       - "scripts/db/**"
       - ".github/workflows/db.yml"
   push:
-    branches: [main]
+    branches: [main, devin/1795380000-demo-combined, devin/1795380152-phase3-boot3]
     paths:
       - "src/main/resources/db/**"
       - "src/main/resources/schema.sql"
