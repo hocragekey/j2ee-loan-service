@@ -48,7 +48,7 @@ validate_cidr() {
     echo "ERROR: '${cidr}' has a prefix > 32." >&2
     exit 1
   fi
-  if [[ "${cidr}" == "0.0.0.0/0" && "${ALLOW_OPEN_INGRESS}" != "true" ]]; then
+  if (( BASH_REMATCH[5] == 0 )) && [[ "${ALLOW_OPEN_INGRESS}" != "true" ]]; then
     echo "ERROR: refusing to open ingress to 0.0.0.0/0. Set ALLOW_OPEN_INGRESS=true to override." >&2
     exit 1
   fi
