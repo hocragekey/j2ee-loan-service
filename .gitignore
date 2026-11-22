@@ -1,0 +1,16 @@
+target/
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.vscode/
+*.log
+*.class
+.DS_Store
+Thumbs.db
+Cognition-Interview-Prep.pdf
+
+.tools/
