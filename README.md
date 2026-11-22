@@ -47,6 +47,23 @@ mvn jetty:run
 
 Open http://localhost:8080/loan-service/
 
+### Local PostgreSQL (Phase 4, `PLAT-04`)
+
+The deploy target is Aurora PostgreSQL Global Database; locally it is PostgreSQL 16 via
+[`docker-compose.yml`](docker-compose.yml). Flyway migrations live in
+`src/main/resources/db/migration` (`V1` schema, `V2` rate card + seed customers C10001–C10004) and
+are a one-to-one port of the H2 `schema.sql`/`data.sql`. The app still runs on H2 until the
+DataSource wiring lands.
+
+```bash
+docker compose up -d --wait postgres     # 127.0.0.1:5432, db loanservice, user loansvc / localdev
+docker compose run --rm flyway migrate   # apply migrations to schema loan_svc
+python3 scripts/db/verify-migrations.py  # throwaway DB: migrate + compare with schema.sql/data.sql
+docker compose down -v
+```
+
+`.github/workflows/db.yml` runs the verification script on pull requests that touch migrations.
+
 ## CI and change control
 
 - **CI (`DEL-03`, `DEL-09`):** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `mvn -B verify` (Temurin JDK 8, Ubuntu 24.04) on every pull request to `main`, every push to `main`, and on manual dispatch. Actions are pinned to commit SHAs. Reproduce locally with `mvn -B verify`.
