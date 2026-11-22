@@ -1,4 +1,5 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<%@ page import="com.capitalone.loansvc.web.HtmlEscaper" %>
 <%@ page import="com.capitalone.loansvc.model.LoanApplication" %>
 <%@ page import="com.capitalone.loansvc.model.PaymentInstallment" %>
 <%@ page import="com.capitalone.loansvc.underwriting.DecisionCodes" %>
@@ -22,27 +23,27 @@
     } else {
 %>
 <table>
-    <tr><th>Application ID</th><td><%= app.getApplicationId() %></td></tr>
-    <tr><th>Customer</th><td><%= app.getCustomerId() %></td></tr>
-    <tr><th>Product</th><td><%= app.getProductCode() %></td></tr>
-    <tr><th>Amount</th><td><%= app.getRequestedAmount() %></td></tr>
-    <tr><th>FICO</th><td><%= app.getFicoScore() %></td></tr>
-    <tr><th>DTI %</th><td><%= app.getDtiPct() %></td></tr>
-    <tr><th>LTV %</th><td><%= app.getLtvPct() %></td></tr>
-    <tr><th>Base Rate</th><td><%= app.getBaseRate() %></td></tr>
-    <tr><th>Final Rate</th><td><%= app.getFinalRate() %></td></tr>
-    <tr><th>Eligibility</th><td><%= app.getEligibilityCode() %></td></tr>
-    <tr><th>Decision</th><td><%= app.getDecisionCode() %>
-        (<%= DecisionCodes.describe(app.getDecisionCode()) %>)</td></tr>
-    <tr><th>Status</th><td><%= app.getStatusCode() %></td></tr>
-    <tr><th>Last Error</th><td><%= app.getLastError() %></td></tr>
+    <tr><th>Application ID</th><td><%= HtmlEscaper.escape(app.getApplicationId()) %></td></tr>
+    <tr><th>Customer</th><td><%= HtmlEscaper.escape(app.getCustomerId()) %></td></tr>
+    <tr><th>Product</th><td><%= HtmlEscaper.escape(app.getProductCode()) %></td></tr>
+    <tr><th>Amount</th><td><%= HtmlEscaper.escape(app.getRequestedAmount()) %></td></tr>
+    <tr><th>FICO</th><td><%= HtmlEscaper.escape(app.getFicoScore()) %></td></tr>
+    <tr><th>DTI %</th><td><%= HtmlEscaper.escape(app.getDtiPct()) %></td></tr>
+    <tr><th>LTV %</th><td><%= HtmlEscaper.escape(app.getLtvPct()) %></td></tr>
+    <tr><th>Base Rate</th><td><%= HtmlEscaper.escape(app.getBaseRate()) %></td></tr>
+    <tr><th>Final Rate</th><td><%= HtmlEscaper.escape(app.getFinalRate()) %></td></tr>
+    <tr><th>Eligibility</th><td><%= HtmlEscaper.escape(app.getEligibilityCode()) %></td></tr>
+    <tr><th>Decision</th><td><%= HtmlEscaper.escape(app.getDecisionCode()) %>
+        (<%= HtmlEscaper.escape(DecisionCodes.describe(app.getDecisionCode())) %>)</td></tr>
+    <tr><th>Status</th><td><%= HtmlEscaper.escape(app.getStatusCode()) %></td></tr>
+    <tr><th>Last Error</th><td><%= HtmlEscaper.escape(app.getLastError()) %></td></tr>
 </table>
 
 <% if (app.getRequiredDocs() != null && !app.getRequiredDocs().isEmpty()) { %>
 <h3>Document Checklist</h3>
 <ul>
     <% for (String d : app.getRequiredDocs()) { %>
-    <li><%= d %></li>
+    <li><%= HtmlEscaper.escape(d) %></li>
     <% } %>
 </ul>
 <% } %>
@@ -57,11 +58,11 @@
             if (shown++ >= 6) break;
     %>
     <tr>
-        <td><%= p.getInstallmentNumber() %></td>
-        <td><%= p.getPaymentAmount() %></td>
-        <td><%= p.getPrincipalAmount() %></td>
-        <td><%= p.getInterestAmount() %></td>
-        <td><%= p.getRemainingBalance() %></td>
+        <td><%= HtmlEscaper.escape(p.getInstallmentNumber()) %></td>
+        <td><%= HtmlEscaper.escape(p.getPaymentAmount()) %></td>
+        <td><%= HtmlEscaper.escape(p.getPrincipalAmount()) %></td>
+        <td><%= HtmlEscaper.escape(p.getInterestAmount()) %></td>
+        <td><%= HtmlEscaper.escape(p.getRemainingBalance()) %></td>
     </tr>
     <% } %>
 </table>

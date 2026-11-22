@@ -1,4 +1,5 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<%@ page import="com.capitalone.loansvc.web.HtmlEscaper" %>
 <html>
 <head>
     <title>Loan Application</title>
@@ -12,7 +13,7 @@
 <body>
 <h2>Loan Application</h2>
 <% if (request.getAttribute("error") != null) { %>
-<div class="err"><%= request.getAttribute("error") %></div>
+<div class="err"><%= HtmlEscaper.escape(request.getAttribute("error")) %></div>
 <% } %>
 <form method="post" action="apply">
     <label>Customer ID

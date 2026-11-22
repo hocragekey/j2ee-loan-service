@@ -7,6 +7,17 @@
 
     <display-name>Capital One Legacy Loan Service</display-name>
 
+    <filter>
+        <filter-name>SecurityHeadersFilter</filter-name>
+        <filter-class>com.capitalone.loansvc.web.SecurityHeadersFilter</filter-class>
+    </filter>
+    <filter-mapping>
+        <filter-name>SecurityHeadersFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+        <dispatcher>REQUEST</dispatcher>
+        <dispatcher>ERROR</dispatcher>
+    </filter-mapping>
+
     <listener>
         <listener-class>com.capitalone.loansvc.web.AppStartupListener</listener-class>
     </listener>
@@ -45,15 +56,6 @@
     <servlet-mapping>
         <servlet-name>CustomerServlet</servlet-name>
         <url-pattern>/customer</url-pattern>
-    </servlet-mapping>
-
-    <servlet>
-        <servlet-name>AdminReloadServlet</servlet-name>
-        <servlet-class>com.capitalone.loansvc.web.AdminReloadServlet</servlet-class>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>AdminReloadServlet</servlet-name>
-        <url-pattern>/admin/reload</url-pattern>
     </servlet-mapping>
 
     <welcome-file-list>
