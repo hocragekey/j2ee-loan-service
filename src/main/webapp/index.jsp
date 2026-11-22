@@ -17,7 +17,6 @@
         <li><a href="apply">Apply for a loan</a></li>
         <li><a href="eligibility">Quick eligibility check</a></li>
         <li><a href="customer?customerId=C10001">Lookup customer C10001</a></li>
-        <li><a href="admin/reload">Admin: reload DB seed</a></li>
     </ul>
     <p><small>Seed customers: C10001, C10002, C10003, C10004 (watchlist)</small></p>
 </div>

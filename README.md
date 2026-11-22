@@ -208,4 +208,5 @@ The CI equivalent (GitHub OIDC role, no stored AWS keys) is documented at the bo
 
 - `LoanApplicationManager` — application processing entry point
 - `EligibilityRules` — loan eligibility evaluation
-- Web entry points: `/apply`, `/eligibility`, `/underwrite`, `/customer`, `/admin/reload`
+- Web entry points: `/apply`, `/eligibility`, `/underwrite`, `/customer` (the unauthenticated `/admin/reload` endpoint was removed; tests reset the in-memory DB with `AppContext.reload()` / `DbUtil.reset()`)
+- `SecurityHeadersFilter` adds `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` to every response. Local `mvn jetty:run` is plain HTTP; HTTPS/HSTS belong at the deployed load balancer and are not configured yet

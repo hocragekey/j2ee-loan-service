@@ -1,4 +1,5 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<%@ page import="com.capitalone.loansvc.web.HtmlEscaper" %>
 <%@ page import="com.capitalone.loansvc.model.Customer" %>
 <html>
 <head>
@@ -8,7 +9,7 @@
 <body>
 <h2>Customer Lookup</h2>
 <form method="get" action="customer">
-    Customer ID: <input name="customerId" value="<%= request.getAttribute("customerId") == null ? "" : request.getAttribute("customerId") %>"/>
+    Customer ID: <input name="customerId" value="<%= request.getAttribute("customerId") == null ? "" : HtmlEscaper.escape(request.getAttribute("customerId")) %>"/>
     <input type="submit" value="Lookup"/>
 </form>
 <%
@@ -20,13 +21,13 @@
     } else {
 %>
 <ul>
-    <li>ID: <%= c.getCustomerId() %></li>
-    <li>Name: <%= c.getFirstName() %> <%= c.getLastName() %></li>
-    <li>Employer: <%= c.getEmployerName() %></li>
-    <li>Status: <%= c.getEmploymentStatus() %></li>
-    <li>Income: <%= c.getAnnualIncome() %></li>
-    <li>Monthly Debt: <%= c.getMonthlyDebt() %></li>
-    <li>Email: <%= c.getEmail() %></li>
+    <li>ID: <%= HtmlEscaper.escape(c.getCustomerId()) %></li>
+    <li>Name: <%= HtmlEscaper.escape(c.getFirstName()) %> <%= HtmlEscaper.escape(c.getLastName()) %></li>
+    <li>Employer: <%= HtmlEscaper.escape(c.getEmployerName()) %></li>
+    <li>Status: <%= HtmlEscaper.escape(c.getEmploymentStatus()) %></li>
+    <li>Income: <%= HtmlEscaper.escape(c.getAnnualIncome()) %></li>
+    <li>Monthly Debt: <%= HtmlEscaper.escape(c.getMonthlyDebt()) %></li>
+    <li>Email: <%= HtmlEscaper.escape(c.getEmail()) %></li>
 </ul>
 <% } %>
 <p><a href="index.jsp">Home</a></p>
