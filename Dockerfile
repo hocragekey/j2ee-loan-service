@@ -55,6 +55,6 @@ EXPOSE 8080
 # No /health endpoint exists yet; probe the JSP landing page (same path as the ECS/ALB
 # health check). Switch to /health/live and /health/ready when Phase 5 adds them (RES-01).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD curl -fsS -o /dev/null http://127.0.0.1:8080/loan-service/ || exit 1
+  CMD curl -fsS -o /dev/null "http://127.0.0.1:${SERVER_PORT:-8080}/loan-service/" || exit 1
 
 ENTRYPOINT ["java", "-jar", "/app/loan-service.war"]
