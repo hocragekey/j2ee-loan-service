@@ -3,8 +3,8 @@ package com.capitalone.loansvc.web;
 import com.capitalone.loansvc.manager.LoanApplicationManager;
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.util.AppContext;
-import com.capitalone.loansvc.util.MoneyHelper;
-import com.capitalone.loansvc.util.StringHelper;
+import com.capitalone.loansvc.util.InputValidationException;
+import com.capitalone.loansvc.util.LoanInputValidator;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -24,21 +24,24 @@ public class LoanApplyServlet extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         LoanApplication app = new LoanApplication();
-        app.setCustomerId(req.getParameter("customerId"));
-        app.setProductCode(StringHelper.upper(req.getParameter("productCode")));
-        app.setRequestedAmount(MoneyHelper.parseMoney(req.getParameter("amount")));
         try {
-            app.setTermMonths(Integer.parseInt(req.getParameter("termMonths")));
-        } catch (Exception e) {
-            app.setTermMonths(36);
-        }
-        app.setPurposeCode(req.getParameter("purposeCode"));
-        app.setCollateralValue(MoneyHelper.parseMoney(req.getParameter("collateralValue")));
-        app.setCollateralType(req.getParameter("collateralType"));
-
-        // light validation in servlet — inconsistent with elsewhere
-        if (StringHelper.isEmpty(app.getCustomerId())) {
-            req.setAttribute("error", "customerId required");
+            LoanInputValidator.LoanInput in = LoanInputValidator.validate(
+                    req.getParameter("customerId"),
+                    req.getParameter("productCode"),
+                    req.getParameter("amount"),
+                    req.getParameter("termMonths"),
+                    req.getParameter("collateralType"),
+                    req.getParameter("collateralValue"));
+            app.setCustomerId(in.getCustomerId());
+            app.setProductCode(in.getProductCode());
+            app.setRequestedAmount(in.getRequestedAmount());
+            app.setTermMonths(in.getTermMonths());
+            app.setCollateralValue(in.getCollateralValue());
+            app.setCollateralType(in.getCollateralType());
+            app.setPurposeCode(LoanInputValidator.validatePurposeCode(req.getParameter("purposeCode")));
+        } catch (InputValidationException e) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            req.setAttribute("error", e.getMessage());
             req.getRequestDispatcher("/apply.jsp").forward(req, resp);
             return;
         }

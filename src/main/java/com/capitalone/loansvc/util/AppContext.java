@@ -4,11 +4,14 @@ import com.capitalone.loansvc.db.DbUtil;
 import com.capitalone.loansvc.manager.CustomerManager;
 import com.capitalone.loansvc.manager.DocumentManager;
 import com.capitalone.loansvc.manager.LoanApplicationManager;
+import org.apache.log4j.Logger;
 
 /**
  * Classic static application context / service locator.
  */
 public class AppContext {
+
+    private static final Logger LOG = Logger.getLogger(AppContext.class);
 
     private static boolean initialized = false;
     private static LoanApplicationManager loanApplicationManager;
@@ -19,13 +22,13 @@ public class AppContext {
         if (initialized) {
             return;
         }
-        System.out.println("AppContext.init starting...");
+        LOG.info("AppContext.init starting...");
         DbUtil.initSchema();
         customerManager = new CustomerManager();
         documentManager = new DocumentManager();
         loanApplicationManager = new LoanApplicationManager();
         initialized = true;
-        System.out.println("AppContext.init complete");
+        LOG.info("AppContext.init complete");
     }
 
     public static synchronized void reload() {
