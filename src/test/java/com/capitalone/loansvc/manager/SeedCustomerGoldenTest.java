@@ -82,6 +82,11 @@ public class SeedCustomerGoldenTest {
 
     @Test
     public void processApplicationMatchesGolden() {
+        assertMatchesGolden(row, TestBeans.get(LoanApplicationManager.class));
+    }
+
+    /** Shared with PostgresParityTest so both databases are held to the same golden rows. */
+    public static void assertMatchesGolden(Map<String, String> row, LoanApplicationManager mgr) {
         String applId = "G-" + row.get("customerId") + "-" + row.get("productCode");
         LoanApplication app = new LoanApplication();
         app.setApplicationId(applId);
@@ -93,7 +98,6 @@ public class SeedCustomerGoldenTest {
         app.setCollateralValue(new BigDecimal(row.get("collateralValue")));
         app.setPurposeCode(row.get("purposeCode"));
 
-        LoanApplicationManager mgr = TestBeans.get(LoanApplicationManager.class);
         LoanApplication r = mgr.processApplication(app);
 
         assertEquals("eligibilityCode", row.get("eligibilityCode"), r.getEligibilityCode());

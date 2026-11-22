@@ -50,6 +50,21 @@ Configuration comes from environment variables (`PLAT-06`), e.g. `SERVER_PORT`,
 `LOAN_BUREAU_MOCK`, `LOAN_NOTIFY_ENABLED`, `LOAN_REGION_ID`. Defaults live in
 `src/main/resources/application.properties` and match the old `ConfigHolder` values.
 
+Run against local PostgreSQL 16 instead of H2 (same variables the ECS task injects, `PLAT-04`):
+
+```bash
+docker compose up -d postgres
+DB_HOST=localhost DB_PORT=5432 DB_NAME=loanservice DB_USERNAME=loansvc DB_PASSWORD=localdev \
+  DB_SSLMODE=disable SPRING_FLYWAY_ENABLED=true mvn spring-boot:run
+```
+
+With `DB_HOST` set, Flyway (`db/migration`, schema `loan_svc`) owns schema and seed and runs only when
+`SPRING_FLYWAY_ENABLED=true`; `schema.sql`/`data.sql` never run. `LOAN_DB_WRITEFORWARDCONSISTENCY`
+(secondary region) runs `SET apg_write_forward.consistency_mode = '<value>'` on each pooled connection,
+and `APP_REGION_ROLE=secondary` with Flyway enabled refuses to start. `DB_SSLMODE` defaults to `require`.
+`mvn -B verify` also runs the golden matrix against PostgreSQL 16 via Testcontainers (skipped
+locally without Docker, required in CI).
+
 Black-box parity check against a running instance: `scripts/parity-smoke.sh http://localhost:8080`
 (diff its output against the same script run on the previous build).
 

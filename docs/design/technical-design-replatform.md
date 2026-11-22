@@ -863,3 +863,16 @@ Implemented on top of `devin/1795380000-demo-combined`:
   difference: Tomcat error pages no longer print the server version footer.
 - Deferred to later P3 items: module packages + ArchUnit (P3-3), pure domain core (P3-4), health
   endpoints and response `X-Request-Id` echo (Phase 5).
+
+## Phase 4 implementation status (app half)
+
+- `DatabaseEnvironmentPostProcessor`: `DB_HOST` unset keeps in-memory H2 (schema.sql/data.sql, Flyway off).
+  `DB_HOST` set builds `jdbc:postgresql://DB_HOST:DB_PORT/DB_NAME` (`sslmode=require`, `currentSchema=loan_svc`,
+  connect 5 s / socket 30 s / statement 15 s timeouts), turns the script reload off and leaves Flyway to
+  `SPRING_FLYWAY_ENABLED` (primary only). `LOAN_DB_WRITEFORWARDCONSISTENCY` (allowlisted) becomes Hikari
+  `connection-init-sql`. `APP_REGION_ROLE=secondary` + Flyway fails fast.
+- Hikari connection/validation/idle/max-lifetime timeouts (`RES-02`).
+- The only H2-specific DAO SQL, `CustomerDao.save` (`MERGE ... KEY`), is now UPDATE-then-INSERT (plain DML,
+  write-forwardable). Insert-then-update fallback in `LoanApplicationManager` is unchanged.
+- `PostgresParityTest` runs the 16-case golden matrix on PostgreSQL 16 (Testcontainers);
+  `PostgresRegionModesTest` covers read-back, the fallback, upsert and the secondary-region mode.
