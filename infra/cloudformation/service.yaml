@@ -176,8 +176,8 @@ Resources:
     Properties:
       Name: !Sub "/${ServiceName}-${EnvironmentName}/db/host"
       Type: String
-      Description: Regional Aurora cluster endpoint (writes forwarded from secondary regions).
-      Value: !ImportValue { "Fn::Sub": "${DataStackName}-ClusterEndpoint" }
+      Description: Regional Aurora endpoint (primary writer; secondary reader endpoint with write forwarding).
+      Value: !ImportValue { "Fn::Sub": "${DataStackName}-AppEndpoint" }
 
   ConfigDbPort:
     Type: AWS::SSM::Parameter

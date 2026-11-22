@@ -477,6 +477,15 @@ Outputs:
       here are forwarded to the global writer (write forwarding).
     Value: !GetAtt DbCluster.Endpoint.Address
     Export: { Name: !Sub "${AWS::StackName}-ClusterEndpoint" }
+  AppEndpoint:
+    Description: >-
+      Endpoint the app uses in this region. Primary: the writer endpoint.
+      Secondary: the reader endpoint, because the secondary cluster endpoint
+      is inactive until promotion and write forwarding works through the
+      reader endpoint/instances. Re-deploy with the new RegionRole after a
+      failover or switchover.
+    Value: !If [IsPrimary, !GetAtt DbCluster.Endpoint.Address, !GetAtt DbCluster.ReadEndpoint.Address]
+    Export: { Name: !Sub "${AWS::StackName}-AppEndpoint" }
   ReaderEndpoint:
     Description: Regional reader endpoint.
     Value: !GetAtt DbCluster.ReadEndpoint.Address

@@ -77,8 +77,10 @@ flowchart TB
   master secret (`PLAT-06`, `IAC-03`).
 - `RegionRole=secondary` creates a KMS replica key and a regional cluster that
   joins the global cluster with `EnableGlobalWriteForwarding: true`.
-- The app in **every** region connects to its **local** cluster endpoint
-  (`/<service>-<env>/db/host` in SSM). Reads are served locally; in the
+- The app in **every** region connects to its **local** cluster
+  (`/<service>-<env>/db/host` in SSM, from the data stack's `AppEndpoint`
+  output): the writer endpoint in the primary, the reader endpoint in the
+  secondary, whose cluster endpoint stays inactive until promotion. Reads are served locally; in the
   secondary region, DML is forwarded by Aurora to the global writer, so there
   is one writer and no multi-master conflict handling.
 - The cluster parameter group sets `apg_write_forward.consistency_mode=session`
