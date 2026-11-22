@@ -1,0 +1,19 @@
+[Unit]
+Description=Apache Tomcat - Legacy Loan Service ({{ env_name }})
+After=network.target
+
+[Service]
+Type=forking
+User={{ tomcat_user }}
+Group={{ tomcat_group }}
+Environment=JAVA_HOME={{ java_home_cmd.stdout }}
+Environment=CATALINA_PID={{ tomcat_install_dir }}/temp/tomcat.pid
+Environment=CATALINA_HOME={{ tomcat_install_dir }}
+Environment=CATALINA_BASE={{ tomcat_install_dir }}
+ExecStart={{ tomcat_install_dir }}/bin/startup.sh
+ExecStop={{ tomcat_install_dir }}/bin/shutdown.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

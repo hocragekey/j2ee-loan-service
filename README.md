@@ -4,6 +4,16 @@ On-premise style **Java 8** loan origination monolith used as the *before* state
 
 Single deployable WAR: servlets, JSP scriptlets, JDBC, static helpers, and tightly coupled domain managers — the kind of estate that still runs on data-center app servers.
 
+## Deployed environments (for agents / Devin)
+
+| Environment | Base URL | Notes |
+|-------------|----------|--------|
+| **integration** | http://34.226.211.125:8080/loan-service/ | Live EC2 + Tomcat stand-in for on-prem. Use this to verify servlet/UI behavior after changes. |
+| dev | http://loan-svc-dev.internal.capitalone.example:8080/loan-service/ | Placeholder — not a real host (demo estate inventory only). |
+| prod | http://loan-svc.prod.capitalone.example:8080/loan-service/ | Placeholder — not a real host (do not target for automation). |
+
+**Agent guidance:** Prefer the **integration** environment for smoke checks (`GET /`, `POST /eligibility`, `GET /customer?customerId=C10001`). Do not attempt to deploy to or call the placeholder `dev` / `prod` URLs. Redeploy to integration with Ansible (`ansible/site.yml` or `deploy-app.yml`) after building `target/loan-service.war`.
+
 ## Stack
 
 | Piece | Choice |
@@ -33,26 +43,58 @@ mvn jetty:run
 
 Open http://localhost:8080/loan-service/
 
-## Deploy on an AWS EC2 VM (data-center stand-in)
+## Integration environment (legacy operating model)
 
-This is the intended runtime story for the interview: one VM, one app server, one WAR — simulating an on-prem middle-tier host.
+Demo story: the **EC2 VM is already provisioned** (data-center stand-in). This repository configures it with **Ansible** and deploys one WAR to Tomcat. One-time AWS CLI bootstrap creates the host; day-2 work is Ansible.
 
-1. Build the WAR locally: `mvn -DskipTests package` → `target/loan-service.war`
-2. Launch an EC2 instance (Amazon Linux 2 / RHEL / Ubuntu), open **TCP 8080** in the security group
-3. Copy artifacts to the VM:
-   ```bash
-   scp target/loan-service.war deploy/ec2-tomcat-setup.sh ec2-user@<vm-ip>:~
-   ```
-4. On the VM:
-   ```bash
-   chmod +x ec2-tomcat-setup.sh
-   sudo ./ec2-tomcat-setup.sh ./loan-service.war
-   ```
-5. Browse http://\<vm-public-ip\>:8080/loan-service/
+```text
+AWS CLI (once)  →  EC2 integration host
+Ansible site.yml →  Java 8 + Tomcat + loan-service.war
+HTTP             →  http://<public-ip>:8080/loan-service/
+```
 
-The setup script installs **Java 8 + Tomcat 9**, drops the WAR into `webapps/`, and registers a `systemd` unit named `tomcat`.
+### 1. Build the WAR
+
+```bash
+mvn -DskipTests package   # → target/loan-service.war
+```
+
+### 2. Provision the integration EC2 (once)
+
+Requires authenticated AWS CLI (`aws login`). From Git Bash or WSL:
+
+```bash
+chmod +x deploy/provision-integration-ec2.sh
+./deploy/provision-integration-ec2.sh
+```
+
+Creates key pair + SG (22/8080 open for demo), launches **t3.small** Amazon Linux 2023 tagged `Name=loan-svc-integration`, and writes `ansible/inventories/integration/hosts.yml` (gitignored). PEM lands in `deploy/secrets/` (gitignored).
+
+### 3. Configure and deploy with Ansible (WSL)
+
+OpenSSH rejects PEMs on `/mnt/c` (DrvFs is world-writable). Copy the key into the WSL home first, then run the helper:
+
+```bash
+# inside WSL
+cp /mnt/c/Users/<you>/repos/cognition-interview/j2ee-loan-service/deploy/secrets/loan-svc-integration.pem ~/.ssh/
+chmod 600 ~/.ssh/loan-svc-integration.pem
+# point inventory ansible_ssh_private_key_file at ~/.ssh/loan-svc-integration.pem
+bash deploy/run-ansible-site.sh
+# later WAR-only from ansible/: ansible-playbook -i inventories/integration/hosts.yml deploy-app.yml
+```
+
+`run-ansible-site.sh` sets `ANSIBLE_*` env vars because Ansible ignores `ansible.cfg` on world-writable DrvFs paths.
+
+### 4. Hit the app / “API” surface
+
+- UI: http://34.226.211.125:8080/loan-service/ (current integration public IP; refresh via provision script if the instance is replaced)
+- Servlets: `POST /loan-service/eligibility`, `POST /loan-service/apply`, `GET /loan-service/customer?customerId=C10001`
 
 H2 is in-process memory (`DB_CLOSE_DELAY=-1`). Restarting Tomcat clears data unless you change `ConfigHolder` to a file-backed JDBC URL.
+
+### Manual shell fallback
+
+[`deploy/ec2-tomcat-setup.sh`](deploy/ec2-tomcat-setup.sh) remains as the older “scp a script onto the box” path if Ansible is unavailable.
 
 ## Seed customers
 

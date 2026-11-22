@@ -1,0 +1,38 @@
+---
+- name: Assert WAR artifact exists on the control node
+  ansible.builtin.stat:
+    path: "{{ app_war_src }}"
+  delegate_to: localhost
+  become: false
+  register: war_stat
+
+- name: Fail when WAR is missing
+  ansible.builtin.fail:
+    msg: "WAR not found at {{ app_war_src }}. Build with: mvn -DskipTests package"
+  when: not war_stat.stat.exists
+
+- name: Remove previous exploded deployment
+  ansible.builtin.file:
+    path: "{{ tomcat_install_dir }}/webapps/{{ app_context }}"
+    state: absent
+
+- name: Deploy loan-service WAR
+  ansible.builtin.copy:
+    src: "{{ app_war_src }}"
+    dest: "{{ tomcat_install_dir }}/webapps/{{ app_war_name }}"
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    mode: "0644"
+  notify: Restart tomcat
+
+- name: Flush handlers so Tomcat restarts before health check
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for application HTTP endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tomcat_http_port }}{{ app_health_path }}"
+    status_code: 200
+  register: health
+  retries: "{{ (app_health_timeout_seconds | int / 5) | int }}"
+  delay: 5
+  until: health.status == 200

@@ -1,0 +1,7 @@
+---
+# WAR-only redeploy (host already configured).
+- name: Redeploy loan-service WAR
+  hosts: loan_app_servers
+  become: true
+  roles:
+    - loan_app

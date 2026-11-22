@@ -1,0 +1,9 @@
+---
+# Full host configure for a pre-provisioned integration app server.
+- name: Configure loan service integration host
+  hosts: loan_app_servers
+  become: true
+  roles:
+    - common
+    - tomcat
+    - loan_app

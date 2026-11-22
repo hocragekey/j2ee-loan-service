@@ -14,3 +14,8 @@ Thumbs.db
 Cognition-Interview-Prep.pdf
 
 .tools/
+deploy/secrets/
+*.pem
+ansible/inventories/integration/hosts.yml
+!ansible/inventories/integration/hosts.yml.example
+

@@ -1,0 +1,21 @@
+---
+# Integration environment — Amazon Linux 2023 app server
+env_name: integration
+
+java_package: java-1.8.0-amazon-corretto
+java_package_devel: java-1.8.0-amazon-corretto-devel
+
+tomcat_version: "9.0.98"
+tomcat_install_dir: /opt/tomcat
+tomcat_user: tomcat
+tomcat_group: tomcat
+tomcat_http_port: 8080
+tomcat_service_name: tomcat
+
+app_context: loan-service
+app_war_name: loan-service.war
+# Override at runtime: -e app_war_src=/path/to/loan-service.war
+app_war_src: "{{ playbook_dir }}/../target/loan-service.war"
+
+app_health_path: "/{{ app_context }}/"
+app_health_timeout_seconds: 120

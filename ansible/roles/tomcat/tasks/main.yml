@@ -1,0 +1,59 @@
+---
+- name: Create Tomcat install directory
+  ansible.builtin.file:
+    path: "{{ tomcat_install_dir }}"
+    state: directory
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    mode: "0755"
+
+- name: Download Apache Tomcat
+  ansible.builtin.get_url:
+    url: "https://archive.apache.org/dist/tomcat/tomcat-9/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    dest: "/tmp/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    mode: "0644"
+
+- name: Unpack Tomcat when not already installed
+  ansible.builtin.unarchive:
+    src: "/tmp/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    dest: "{{ tomcat_install_dir }}"
+    remote_src: true
+    extra_opts:
+      - --strip-components=1
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    creates: "{{ tomcat_install_dir }}/bin/catalina.sh"
+
+- name: Ensure Tomcat directories are owned by tomcat
+  ansible.builtin.file:
+    path: "{{ tomcat_install_dir }}"
+    state: directory
+    owner: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    recurse: true
+
+- name: Resolve JAVA_HOME
+  ansible.builtin.shell: |
+    set -e
+    java_bin=$(readlink -f "$(command -v java)")
+    dirname "$(dirname "$java_bin")"
+  args:
+    executable: /bin/bash
+  register: java_home_cmd
+  changed_when: false
+
+- name: Install Tomcat systemd unit
+  ansible.builtin.template:
+    src: tomcat.service.j2
+    dest: /etc/systemd/system/{{ tomcat_service_name }}.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart tomcat
+
+- name: Enable and start Tomcat
+  ansible.builtin.systemd:
+    name: "{{ tomcat_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

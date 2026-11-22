@@ -1,0 +1,26 @@
+---
+- name: Install Java 8 and base packages
+  ansible.builtin.dnf:
+    name:
+      - "{{ java_package }}"
+      - "{{ java_package_devel }}"
+      - wget
+      - tar
+      - unzip
+    state: present
+
+- name: Ensure tomcat group exists
+  ansible.builtin.group:
+    name: "{{ tomcat_group }}"
+    system: true
+    state: present
+
+- name: Ensure tomcat user exists
+  ansible.builtin.user:
+    name: "{{ tomcat_user }}"
+    group: "{{ tomcat_group }}"
+    home: "{{ tomcat_install_dir }}"
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+    state: present
