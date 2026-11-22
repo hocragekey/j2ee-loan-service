@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # One-time bootstrap: create the integration EC2 that Ansible will configure.
 # Legacy model: provisioning is separate from (and prior to) configuration management.
+#
+# Inbound access (SEC-05): SSH (22) and Tomcat (8080) are only opened to explicit CIDRs.
+#   INGRESS_CIDR       CIDR for both ports (default: caller's current public IPv4 /32 via checkip.amazonaws.com)
+#   SSH_INGRESS_CIDR   CIDR for port 22    (default: INGRESS_CIDR)
+#   APP_INGRESS_CIDR   CIDR for port 8080  (default: INGRESS_CIDR)
+#   ALLOW_OPEN_INGRESS=true      permit 0.0.0.0/0 (refused by default)
+#   UPDATE_EXISTING_SG_INGRESS=true  on a reused SG, revoke 0.0.0.0/0 rules on 22/8080 and add the CIDRs above
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,6 +18,44 @@ SG_NAME="${SG_NAME:-loan-svc-integration-sg}"
 INSTANCE_NAME="${INSTANCE_NAME:-loan-svc-integration}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-t3.small}"
 INVENTORY_FILE="${ROOT_DIR}/ansible/inventories/integration/hosts.yml"
+ALLOW_OPEN_INGRESS="${ALLOW_OPEN_INGRESS:-false}"
+UPDATE_EXISTING_SG_INGRESS="${UPDATE_EXISTING_SG_INGRESS:-false}"
+
+if [[ -z "${INGRESS_CIDR:-}" ]]; then
+  CALLER_IP="$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]' || true)"
+  if [[ -z "${CALLER_IP}" ]]; then
+    echo "ERROR: could not detect your public IP. Set INGRESS_CIDR (e.g. 203.0.113.10/32)." >&2
+    exit 1
+  fi
+  INGRESS_CIDR="${CALLER_IP}/32"
+fi
+SSH_INGRESS_CIDR="${SSH_INGRESS_CIDR:-${INGRESS_CIDR}}"
+APP_INGRESS_CIDR="${APP_INGRESS_CIDR:-${INGRESS_CIDR}}"
+
+validate_cidr() {
+  local cidr="$1" octet
+  if [[ ! "${cidr}" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})/([0-9]{1,2})$ ]]; then
+    echo "ERROR: '${cidr}' is not an IPv4 CIDR (e.g. 203.0.113.10/32)." >&2
+    exit 1
+  fi
+  for octet in "${BASH_REMATCH[@]:1:4}"; do
+    if (( octet > 255 )); then
+      echo "ERROR: '${cidr}' has an octet > 255." >&2
+      exit 1
+    fi
+  done
+  if (( BASH_REMATCH[5] > 32 )); then
+    echo "ERROR: '${cidr}' has a prefix > 32." >&2
+    exit 1
+  fi
+  if [[ "${cidr}" == "0.0.0.0/0" && "${ALLOW_OPEN_INGRESS}" != "true" ]]; then
+    echo "ERROR: refusing to open ingress to 0.0.0.0/0. Set ALLOW_OPEN_INGRESS=true to override." >&2
+    exit 1
+  fi
+}
+validate_cidr "${SSH_INGRESS_CIDR}"
+validate_cidr "${APP_INGRESS_CIDR}"
+echo "==> Ingress: SSH 22 <- ${SSH_INGRESS_CIDR}, Tomcat 8080 <- ${APP_INGRESS_CIDR}"
 
 mkdir -p "${SECRETS_DIR}"
 chmod 700 "${SECRETS_DIR}"
@@ -58,16 +103,40 @@ if [[ -z "${SG_ID}" || "${SG_ID}" == "None" ]]; then
   echo "==> Creating security group ${SG_NAME}"
   SG_ID="$(aws ec2 create-security-group \
     --group-name "${SG_NAME}" \
-    --description "Loan service integration demo (intentionally open for interview)" \
+    --description "Loan service integration (ingress restricted to allowed CIDRs)" \
     --vpc-id "${VPC_ID}" \
     --query GroupId --output text)"
   aws ec2 authorize-security-group-ingress --group-id "${SG_ID}" \
     --ip-permissions \
-    'IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=0.0.0.0/0,Description=SSH-demo}]' \
-    'IpProtocol=tcp,FromPort=8080,ToPort=8080,IpRanges=[{CidrIp=0.0.0.0/0,Description=Tomcat-demo}]' \
+    "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${SSH_INGRESS_CIDR},Description=SSH-allowed}]" \
+    "IpProtocol=tcp,FromPort=8080,ToPort=8080,IpRanges=[{CidrIp=${APP_INGRESS_CIDR},Description=Tomcat-allowed}]" \
     >/dev/null
 else
   echo "==> Reusing security group ${SG_ID}"
+  for port_cidr in "22:${SSH_INGRESS_CIDR}" "8080:${APP_INGRESS_CIDR}"; do
+    port="${port_cidr%%:*}"
+    cidr="${port_cidr#*:}"
+    open_rule="$(aws ec2 describe-security-groups --group-ids "${SG_ID}" \
+      --query "SecurityGroups[0].IpPermissions[?FromPort==\`${port}\`].IpRanges[] | [?CidrIp=='0.0.0.0/0'] | length(@)" \
+      --output text)"
+    has_cidr="$(aws ec2 describe-security-groups --group-ids "${SG_ID}" \
+      --query "SecurityGroups[0].IpPermissions[?FromPort==\`${port}\`].IpRanges[] | [?CidrIp=='${cidr}'] | length(@)" \
+      --output text)"
+    if [[ "${UPDATE_EXISTING_SG_INGRESS}" == "true" ]]; then
+      if [[ "${has_cidr}" == "0" ]]; then
+        echo "==> SG ${SG_ID}: allowing ${port} from ${cidr}"
+        aws ec2 authorize-security-group-ingress --group-id "${SG_ID}" \
+          --protocol tcp --port "${port}" --cidr "${cidr}" >/dev/null
+      fi
+      if [[ "${open_rule}" != "0" && "${cidr}" != "0.0.0.0/0" ]]; then
+        echo "==> SG ${SG_ID}: revoking ${port} from 0.0.0.0/0"
+        aws ec2 revoke-security-group-ingress --group-id "${SG_ID}" \
+          --protocol tcp --port "${port}" --cidr 0.0.0.0/0 >/dev/null
+      fi
+    elif [[ "${open_rule}" != "0" ]]; then
+      echo "WARNING: SG ${SG_ID} allows port ${port} from 0.0.0.0/0. Re-run with UPDATE_EXISTING_SG_INGRESS=true to restrict it to ${cidr}." >&2
+    fi
+  done
 fi
 
 AMI_ID="$(aws ec2 describe-images \
@@ -138,4 +207,4 @@ EOF
 echo "==> Instance ${INSTANCE_ID} @ ${PUBLIC_IP}"
 echo "==> Inventory written to ${INVENTORY_FILE}"
 echo "==> Next (WSL): bash deploy/run-ansible-site.sh"
-echo "    App URL: http://${PUBLIC_IP}:8080/loan-service/"
+echo "    App URL: http://${PUBLIC_IP}:8080/loan-service/ (reachable from ${APP_INGRESS_CIDR} only)"
