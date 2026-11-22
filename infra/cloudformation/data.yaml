@@ -62,7 +62,7 @@ Parameters:
     Description: Aurora global cluster identifier, same value in every region (e.g. loan-service-prod-global).
   EngineVersion:
     Type: String
-    Default: "16.4"
+    Default: "16.15"
     Description: Aurora PostgreSQL version. Must support Global Database and write forwarding (14.9+, 15.4+, 16.x).
   ClusterParameterGroupFamily:
     Type: String

@@ -4,7 +4,7 @@
   "NetworkStackName": "loan-svc-integration-network",
   "RegionRole": "primary",
   "GlobalClusterIdentifier": "loan-svc-integration-global",
-  "EngineVersion": "16.4",
+  "EngineVersion": "16.15",
   "InstanceClass": "db.serverless",
   "ServerlessMinCapacity": "0.5",
   "ServerlessMaxCapacity": "2",
