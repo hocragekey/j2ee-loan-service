@@ -1,0 +1,37 @@
+name: db-migrations
+
+on:
+  pull_request:
+    paths:
+      - "src/main/resources/db/**"
+      - "src/main/resources/schema.sql"
+      - "src/main/resources/data.sql"
+      - "docker-compose.yml"
+      - "scripts/db/**"
+      - ".github/workflows/db.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/main/resources/db/**"
+      - "src/main/resources/schema.sql"
+      - "src/main/resources/data.sql"
+      - "docker-compose.yml"
+      - "scripts/db/**"
+      - ".github/workflows/db.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Flyway on PostgreSQL 16 (parity with H2 schema/seed)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Apply migrations and compare with schema.sql/data.sql
+        run: python3 scripts/db/verify-migrations.py

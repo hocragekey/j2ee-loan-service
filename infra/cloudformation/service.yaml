@@ -3,7 +3,10 @@ Description: >-
   loan-service regional compute (one stack per active region). ECS cluster on
   Fargate, task definition with least-privilege task and execution roles,
   CloudWatch log group with retention, SSM parameters for non-secret config,
-  Secrets Manager injection for DB credentials, optional AWS Distro for
+  Aurora connection injected through task-definition Secrets (regional
+  endpoint/port/database from SSM, username/password from this region's
+  Secrets Manager secret or replica), Flyway enabled only in the primary
+  (writer) region, write-forwarding read consistency for the secondary, optional AWS Distro for
   OpenTelemetry (X-Ray) sidecar, ECS service across two AZs with deployment
   circuit breaker and rollback, target-tracking autoscaling on CPU and ALB
   requests per target, and CloudWatch alarms. Controls: PLAT-01, PLAT-06,
@@ -166,6 +169,8 @@ Parameters:
     Description: Optional SNS topic ARN for alarm notifications.
 
 Conditions:
+  IsPrimary: !Equals [!Ref RegionRole, primary]
+  IsSecondary: !Equals [!Ref RegionRole, secondary]
   OtelEnabled: !Equals [!Ref EnableOtelSidecar, "true"]
   HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
 
@@ -361,6 +366,18 @@ Resources:
             - { Name: APP_REGION, Value: !Ref AWS::Region }
             - { Name: SERVER_PORT, Value: !Ref ContainerPort }
             - { Name: CONFIG_SSM_PATH, Value: !Sub "/${ServiceName}-${EnvironmentName}/" }
+            # DDL is not write-forwarded (PLAT-04): only the global writer region
+            # runs Flyway; secondary regions get the schema through replication.
+            - { Name: SPRING_FLYWAY_ENABLED, Value: !If [IsPrimary, "true", "false"] }
+            # Secondary only: the app runs
+            #   SET apg_write_forward.consistency_mode = '<value>'
+            # on each new connection so forwarded writes are read back in the
+            # same session (Aurora PostgreSQL; the cluster parameter group sets
+            # the same default). Unset in the primary region.
+            - !If
+              - IsSecondary
+              - { Name: LOAN_DB_WRITEFORWARDCONSISTENCY, Value: session }
+              - !Ref AWS::NoValue
             - !If
               - OtelEnabled
               - { Name: OTEL_EXPORTER_OTLP_ENDPOINT, Value: "http://localhost:4317" }
@@ -369,6 +386,10 @@ Resources:
               - OtelEnabled
               - { Name: OTEL_SERVICE_NAME, Value: !Ref ServiceName }
               - !Ref AWS::NoValue
+          # Regional connection settings come from this region's SSM parameters
+          # (regional endpoint, never the primary's host); credentials come from
+          # this region's Secrets Manager secret (primary) or its replica
+          # (secondary). Nothing secret is in Environment (SEC-01, PLAT-06).
           Secrets:
             - Name: DB_HOST
               ValueFrom: !Ref ConfigDbHost
