@@ -117,10 +117,10 @@ else
     port="${port_cidr%%:*}"
     cidr="${port_cidr#*:}"
     open_rule="$(aws ec2 describe-security-groups --group-ids "${SG_ID}" \
-      --query "SecurityGroups[0].IpPermissions[?FromPort==\`${port}\`].IpRanges[] | [?CidrIp=='0.0.0.0/0'] | length(@)" \
+      --query "SecurityGroups[0].IpPermissions[?IpProtocol=='tcp' && FromPort==\`${port}\`].IpRanges[] | [?CidrIp=='0.0.0.0/0'] | length(@)" \
       --output text)"
     has_cidr="$(aws ec2 describe-security-groups --group-ids "${SG_ID}" \
-      --query "SecurityGroups[0].IpPermissions[?FromPort==\`${port}\`].IpRanges[] | [?CidrIp=='${cidr}'] | length(@)" \
+      --query "SecurityGroups[0].IpPermissions[?IpProtocol=='tcp' && FromPort==\`${port}\`].IpRanges[] | [?CidrIp=='${cidr}'] | length(@)" \
       --output text)"
     if [[ "${UPDATE_EXISTING_SG_INGRESS}" == "true" ]]; then
       if [[ "${has_cidr}" == "0" ]]; then
@@ -128,7 +128,7 @@ else
         aws ec2 authorize-security-group-ingress --group-id "${SG_ID}" \
           --protocol tcp --port "${port}" --cidr "${cidr}" >/dev/null
       fi
-      if [[ "${open_rule}" != "0" && "${cidr}" != "0.0.0.0/0" ]]; then
+      if [[ "${open_rule}" != "0" && "${cidr##*/}" != "0" ]]; then
         echo "==> SG ${SG_ID}: revoking ${port} from 0.0.0.0/0"
         aws ec2 revoke-security-group-ingress --group-id "${SG_ID}" \
           --protocol tcp --port "${port}" --cidr 0.0.0.0/0 >/dev/null
