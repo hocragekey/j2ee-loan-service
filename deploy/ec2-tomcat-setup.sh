@@ -46,7 +46,7 @@ After=network.target
 Type=forking
 User=$APP_USER
 Group=$APP_USER
-Environment=JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+Environment=JAVA_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")
 Environment=CATALINA_PID=$INSTALL_DIR/temp/tomcat.pid
 Environment=CATALINA_HOME=$INSTALL_DIR
 Environment=CATALINA_BASE=$INSTALL_DIR
