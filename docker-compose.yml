@@ -1,0 +1,48 @@
+# Local stand-in for the Aurora PostgreSQL Global Database (PLAT-04 "Local
+# PostgreSQL"). Local only: the password below is a throwaway dev default, not a
+# secret (SEC-01); deployed environments read credentials from Secrets Manager.
+#
+#   docker compose up -d --wait postgres     # PostgreSQL 16 on 127.0.0.1:5432
+#   docker compose run --rm flyway migrate   # apply src/main/resources/db/migration
+#   docker compose down -v                   # stop and drop local data
+#
+# App connection (same env var names as the ECS task definition):
+#   DB_HOST=localhost DB_PORT=5432 DB_NAME=loanservice DB_USERNAME=loansvc DB_PASSWORD=localdev
+name: loan-service
+
+services:
+  postgres:
+    image: postgres:16.16
+    environment:
+      POSTGRES_DB: loanservice
+      POSTGRES_USER: loansvc
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-localdev}
+    ports:
+      # LOCAL_DB_PORT="" publishes on a random free port (used by the migration test).
+      - "127.0.0.1:${LOCAL_DB_PORT-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loansvc -d loanservice"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Same migrations the app runs with Flyway on start-up in the writer region.
+  flyway:
+    image: flyway/flyway:11.20.3
+    profiles: [tools]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/loanservice
+      FLYWAY_USER: loansvc
+      FLYWAY_PASSWORD: ${LOCAL_DB_PASSWORD:-localdev}
+      FLYWAY_SCHEMAS: loan_svc
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+    volumes:
+      - ./src/main/resources/db/migration:/flyway/sql:ro
+
+volumes:
+  pgdata:

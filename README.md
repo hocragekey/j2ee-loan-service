@@ -50,10 +50,42 @@ Configuration comes from environment variables (`PLAT-06`), e.g. `SERVER_PORT`,
 `LOAN_BUREAU_MOCK`, `LOAN_NOTIFY_ENABLED`, `LOAN_REGION_ID`. Defaults live in
 `src/main/resources/application.properties` and match the old `ConfigHolder` values.
 
+Run against local PostgreSQL 16 instead of H2 (same variables the ECS task injects, `PLAT-04`):
+
+```bash
+docker compose up -d postgres
+DB_HOST=localhost DB_PORT=5432 DB_NAME=loanservice DB_USERNAME=loansvc DB_PASSWORD=localdev \
+  DB_SSLMODE=disable SPRING_FLYWAY_ENABLED=true mvn spring-boot:run
+```
+
+With `DB_HOST` set, Flyway (`db/migration`, schema `loan_svc`) owns schema and seed and runs only when
+`SPRING_FLYWAY_ENABLED=true`; `schema.sql`/`data.sql` never run. `LOAN_DB_WRITEFORWARDCONSISTENCY`
+(secondary region) runs `SET apg_write_forward.consistency_mode = '<value>'` on each pooled connection,
+and `APP_REGION_ROLE=secondary` with Flyway enabled refuses to start. TLS defaults to `DB_SSLMODE=verify-full` against the Amazon RDS CA bundle baked into the image (`/app/certs/rds-global-bundle.pem`, override with `DB_SSLROOTCERT`). A task that cannot reach the database fails at startup.
+`mvn -B verify` also runs the golden matrix against PostgreSQL 16 via Testcontainers (skipped
+locally without Docker, required in CI).
+
 Black-box parity check against a running instance: `scripts/parity-smoke.sh http://localhost:8080`
 (diff its output against the same script run on the previous build).
 
 Open http://localhost:8080/loan-service/
+
+### Local PostgreSQL (Phase 4, `PLAT-04`)
+
+The deploy target is Aurora PostgreSQL Global Database; locally it is PostgreSQL 16 via
+[`docker-compose.yml`](docker-compose.yml). Flyway migrations live in
+`src/main/resources/db/migration` (`V1` schema, `V2` rate card + seed customers C10001–C10004) and
+are a one-to-one port of the H2 `schema.sql`/`data.sql`. The app still runs on H2 until the
+DataSource wiring lands.
+
+```bash
+docker compose up -d --wait postgres     # 127.0.0.1:5432, db loanservice, user loansvc / localdev
+docker compose run --rm flyway migrate   # apply migrations to schema loan_svc
+python3 scripts/db/verify-migrations.py  # throwaway DB: migrate + compare with schema.sql/data.sql
+docker compose down -v
+```
+
+`.github/workflows/db.yml` runs the verification script on pull requests that touch migrations.
 
 ## CI and change control
 

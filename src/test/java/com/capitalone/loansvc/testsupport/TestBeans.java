@@ -20,9 +20,9 @@ public final class TestBeans {
         if (context == null) {
             context = new SpringApplicationBuilder(LoanServiceApplication.class)
                     .web(WebApplicationType.NONE)
-                    // Command-line args outrank SPRING_DATASOURCE_URL: resetDatabase() drops all
-                    // objects, so tests must never touch an externally configured database.
-                    .run("--spring.datasource.url=jdbc:h2:mem:loansvc-test;DB_CLOSE_DELAY=-1;MODE=Oracle",
+                    // Command-line args outrank DB_HOST / SPRING_DATASOURCE_URL from the shell:
+                    // resetDatabase() drops all objects, so tests never touch an external database.
+                    .run("--DB_HOST=", "--spring.datasource.url=jdbc:h2:mem:loansvc-test;DB_CLOSE_DELAY=-1;MODE=Oracle",
                             "--spring.datasource.username=sa", "--spring.datasource.password=");
         }
         return context;

@@ -17,6 +17,7 @@ public class LoanProperties {
     private String dtiHeloc = "45";
     private String ficoFloor = "620";
     private String regionId = "local";
+    private String regionRole = "local";
 
     public String getBureauMock() {
         return bureauMock;
@@ -73,5 +74,13 @@ public class LoanProperties {
 
     public void setRegionId(String regionId) {
         this.regionId = regionId;
+    }
+
+    public String getRegionRole() {
+        return regionRole;
+    }
+
+    public void setRegionRole(String regionRole) {
+        this.regionRole = regionRole;
     }
 }

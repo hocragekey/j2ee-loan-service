@@ -64,14 +64,38 @@ public class CustomerDao {
         }
     }
 
+    /**
+     * Upsert by CUST_ID, same result as the former H2 {@code MERGE ... KEY(CUST_ID)} (every column,
+     * including CREATE_TS, is overwritten). UPDATE first, INSERT when no row matched: portable
+     * across H2 and PostgreSQL and plain DML, so it is write-forwarded on an Aurora secondary.
+     */
     public void save(Customer cust) {
         Connection c = null;
         PreparedStatement ps = null;
         try {
             c = dataSource.getConnection();
+            Timestamp now = new Timestamp(System.currentTimeMillis());
             ps = c.prepareStatement(
-                    "MERGE INTO CUST_ACCT (CUST_ID, FIRST_NM, LAST_NM, SSN_LAST4, EMP_NM, EMP_STATUS, " +
-                    "ANNUAL_INCOME, MONTHLY_DEBT, EMAIL_ADDR, PHONE_NBR, CREATE_TS) KEY(CUST_ID) " +
+                    "UPDATE CUST_ACCT SET FIRST_NM=?, LAST_NM=?, SSN_LAST4=?, EMP_NM=?, EMP_STATUS=?, " +
+                    "ANNUAL_INCOME=?, MONTHLY_DEBT=?, EMAIL_ADDR=?, PHONE_NBR=?, CREATE_TS=? WHERE CUST_ID=?");
+            ps.setString(1, cust.getFirstName());
+            ps.setString(2, cust.getLastName());
+            ps.setString(3, cust.getSsnLast4());
+            ps.setString(4, cust.getEmployerName());
+            ps.setString(5, cust.getEmploymentStatus());
+            ps.setBigDecimal(6, cust.getAnnualIncome());
+            ps.setBigDecimal(7, cust.getMonthlyDebt());
+            ps.setString(8, cust.getEmail());
+            ps.setString(9, cust.getPhone());
+            ps.setTimestamp(10, now);
+            ps.setString(11, cust.getCustomerId());
+            if (ps.executeUpdate() > 0) {
+                return;
+            }
+            Jdbc.closeQuietly(ps);
+            ps = c.prepareStatement(
+                    "INSERT INTO CUST_ACCT (CUST_ID, FIRST_NM, LAST_NM, SSN_LAST4, EMP_NM, EMP_STATUS, " +
+                    "ANNUAL_INCOME, MONTHLY_DEBT, EMAIL_ADDR, PHONE_NBR, CREATE_TS) " +
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?)");
             ps.setString(1, cust.getCustomerId());
             ps.setString(2, cust.getFirstName());
@@ -83,7 +107,7 @@ public class CustomerDao {
             ps.setBigDecimal(8, cust.getMonthlyDebt());
             ps.setString(9, cust.getEmail());
             ps.setString(10, cust.getPhone());
-            ps.setTimestamp(11, new Timestamp(System.currentTimeMillis()));
+            ps.setTimestamp(11, now);
             ps.executeUpdate();
         } catch (Exception e) {
             throw new RuntimeException("CustomerDao.save failed", e);

@@ -84,7 +84,39 @@ flowchart TB
   secondary region, DML is forwarded by Aurora to the global writer, so there
   is one writer and no multi-master conflict handling.
 - The cluster parameter group sets `apg_write_forward.consistency_mode=session`
-  (read-your-writes within a session) and `rds.force_ssl=1`.
+  (read-your-writes within a session) and `rds.force_ssl=1`. Secondary-region
+  tasks also get `LOAN_DB_WRITEFORWARDCONSISTENCY=session`; the app must run
+  `SET apg_write_forward.consistency_mode = 'session'` on every new connection
+  when it is set (e.g. Hikari `connection-init-sql`). This is the Aurora
+  **PostgreSQL** setting; `aurora_replica_read_consistency` is the Aurora MySQL
+  equivalent and does not exist in PostgreSQL.
+- DDL is not write-forwarded, so Flyway runs only in the primary region
+  (`SPRING_FLYWAY_ENABLED=true` there, `false` in the secondary). Concurrent
+  tasks in the primary are safe: Flyway takes a PostgreSQL advisory lock.
+
+### App database contract (task definition, `PLAT-04`, `PLAT-06`, `SEC-01`)
+
+| Env var | Source | Primary (us-east-1) | Secondary (us-west-2) |
+|---------|--------|---------------------|-----------------------|
+| `DB_HOST` | `Secrets` → SSM `/<service>-<env>/db/host` | regional writer endpoint | regional reader endpoint (write forwarding) |
+| `DB_PORT` | `Secrets` → SSM `/<service>-<env>/db/port` | `5432` | `5432` |
+| `DB_NAME` | `Secrets` → SSM `/<service>-<env>/db/name` | `loanservice` | `loanservice` |
+| `DB_USERNAME` | `Secrets` → Secrets Manager `<service>-<env>/aurora/master:username` | primary secret | in-region replica secret |
+| `DB_PASSWORD` | `Secrets` → Secrets Manager `<service>-<env>/aurora/master:password` | primary secret | in-region replica secret |
+| `SPRING_FLYWAY_ENABLED` | `Environment` | `true` | `false` |
+| `LOAN_DB_WRITEFORWARDCONSISTENCY` | `Environment` | unset | `session` |
+| `APP_REGION_ROLE` | `Secrets` → SSM `/<service>-<env>/app/region-role` | `primary` | `secondary` |
+
+Host, port and database name come from the region's own SSM parameters, not
+from the secret: the replicated secret is a read-only copy of the primary's,
+so any `host` key in it (added by `SecretTargetAttachment`) names the
+primary cluster. The app builds
+`jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}` with `sslmode=require`
+(the cluster enforces TLS) and schema `loan_svc` (Flyway `schemas`). The
+execution role may read only that secret, decrypt only with the region's data
+key via Secrets Manager (`kms:ViaService`), and read only the service's SSM
+path. The Aurora security group allows 5432 only from the app security group
+(`data.yaml` `DbSecurityGroup`, exported as `DbSecurityGroupId`).
 - Forwarded writes add cross-region latency. Latency-sensitive write paths can
   be routed to the primary region later; this PR does not do that.
 - Regional failover (promote the secondary, `RES-08`) is an operational runbook
@@ -255,10 +287,13 @@ This PR adds templates, policy rules, parameter files and scripts only.
   autoscaling and alarms are **designed and templated, not proven** in a live
   account. No failover or game-day test has been run (`RES-08` evidence is the
   template and runbook design only).
-- The current application still uses in-memory H2. `DB_*` environment
-  variables and secrets are injected into the task but are **not read by the
-  app** until the PostgreSQL migration phase lands, so the deployed service
-  would not persist data in Aurora yet.
+- The current application still uses in-memory H2. The Flyway migrations
+  (`src/main/resources/db/migration`) and the `DB_*`,
+  `SPRING_FLYWAY_ENABLED` and `LOAN_DB_WRITEFORWARDCONSISTENCY` task settings
+  exist, but the app does **not read them** until the Java DataSource/DAO
+  wiring lands, so the deployed service would not persist data in Aurora yet.
+- The app connects as the Aurora master user. A least-privilege application
+  role (DML only on `loan_svc`, separate migration role) is a follow-up.
 - Integration settings (HTTP-only, no DNS records, single NAT, single DB
   instance, no deletion protection) are not production-compliant.
 - The X-Ray/OTel sidecar is optional and off by default; the app is not yet
