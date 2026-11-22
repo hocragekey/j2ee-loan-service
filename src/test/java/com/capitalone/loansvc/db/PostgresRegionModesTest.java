@@ -136,6 +136,17 @@ public class PostgresRegionModesTest {
     }
 
     @Test
+    public void wrongCredentialsFailStartupEvenWithFlywayOff() {
+        try {
+            PostgresSupport.start("--spring.flyway.enabled=false", "--APP_REGION_ROLE=secondary",
+                    "--DB_PASSWORD=wrong").close();
+            fail("expected startup failure");
+        } catch (Exception e) {
+            assertTrue(String.valueOf(e), e instanceof org.springframework.beans.factory.BeanCreationException);
+        }
+    }
+
+    @Test
     public void secondaryWithFlywayEnabledRefusesToStart() {
         try {
             PostgresSupport.start("--spring.flyway.enabled=true", "--APP_REGION_ROLE=secondary").close();
