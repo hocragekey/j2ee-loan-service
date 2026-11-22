@@ -1,8 +1,8 @@
 # Legacy Loan Service (J2EE-style WAR)
 
-On-premise style **Java 8** loan origination monolith used as the *before* state for a Cognition / Devin modernization demo (Capital One hypothetical scenario).
+On-premise style **Java 8** loan origination monolith (Capital One hypothetical scenario for Cognition / Devin interview demos).
 
-Single deployable WAR: servlets, JSP scriptlets, JDBC, static helpers, and tightly coupled domain managers — the kind of estate that still runs on data-center app servers.
+Single deployable WAR: servlets, JSP scriptlets, JDBC, and domain managers for loan eligibility and underwriting.
 
 ## Deployed environments (for agents / Devin)
 
@@ -22,10 +22,8 @@ Single deployable WAR: servlets, JSP scriptlets, JDBC, static helpers, and tight
 | Packaging | Maven WAR (`loan-service.war`) |
 | Web | Servlet 3.1 + JSP |
 | Data | Embedded H2 (Oracle-ish table names) |
-| Logging | System.out + Log4j 1.x |
-| Tests | JUnit 4 (limited baseline) |
-
-No Spring, no DI container, no microservice split.
+| Logging | Log4j 1.x |
+| Tests | JUnit 4 |
 
 ## Local build & test
 
@@ -100,17 +98,13 @@ H2 is in-process memory (`DB_CLOSE_DELAY=-1`). Restarting Tomcat clears data unl
 
 | ID | Notes |
 |----|--------|
-| C10001 | Employed, clean happy path |
-| C10002 | Missing employer name (silent KYC default) |
-| C10003 | Self-employed (+0.25% rate bump in pricing) |
-| C10004 | Watchlist hit → eligibility `WL` |
+| C10001 | Employed |
+| C10002 | Employed |
+| C10003 | Self-employed |
+| C10004 | Seeded customer |
 
 ## Application map
 
-- `LoanApplicationManager` — god-object orchestration (KYC → bureau → collateral → eligibility → pricing → docs → underwriting → schedule → notify → audit)
-- `EligibilityRules` — static, side-effecting eligibility (primary modernization extraction target)
+- `LoanApplicationManager` — application processing entry point
+- `EligibilityRules` — loan eligibility evaluation
 - Web entry points: `/apply`, `/eligibility`, `/underwrite`, `/customer`, `/admin/reload`
-
-## Known baseline gaps (intentional)
-
-Tight coupling, inconsistent validation/error codes (`Y`/`N`/`WL`/`ERR`), mixed logging, unauthenticated admin reload, limited automated tests. Preserve existing business quirks when modernizing (see unit tests).
