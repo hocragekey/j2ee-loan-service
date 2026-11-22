@@ -7,6 +7,7 @@ import com.capitalone.loansvc.testsupport.ConfigHolderRule;
 import com.capitalone.loansvc.testsupport.LegacyTestState;
 import com.capitalone.loansvc.testsupport.TestData;
 import com.capitalone.loansvc.util.AppContext;
+import com.capitalone.loansvc.util.InputValidationException;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -219,5 +220,43 @@ public class LoanApplicationManagerTest {
         assertEquals("DECLINED", persisted.getStatusCode());
         assertEquals(Integer.valueOf(619), persisted.getFicoScore());
         assertDecimal("10.4900", persisted.getFinalRate());
+    }
+
+    @Test
+    public void eligibilityOnlyAcceptsValidInputUnchanged() {
+        LoanApplicationManager mgr = AppContext.getLoanApplicationManager();
+        assertEquals("Y", mgr.checkEligibilityOnly("C10001", "AUTO", "20000", "48", "28000", "AUTO"));
+        assertEquals("Y", mgr.checkEligibilityOnly("C10001", "auto", "20,000", "48", "28000", "auto"));
+        assertEquals("ERR", mgr.checkEligibilityOnly("C99999", "AUTO", "20000", "48", "28000", "AUTO"));
+    }
+
+    @Test
+    public void eligibilityOnlyRejectsInvalidTermInsteadOfDefaultingTo36() {
+        assertEligibilityRejected("C10001", "AUTO", "20000", "forty", "28000", "AUTO", "termMonths");
+        assertEligibilityRejected("C10001", "AUTO", "20000", "", "28000", "AUTO", "termMonths");
+    }
+
+    @Test
+    public void eligibilityOnlyRejectsInvalidAmountInsteadOfReturningErr() {
+        assertEligibilityRejected("C10001", "AUTO", "lots", "48", "28000", "AUTO", "amount");
+        assertEligibilityRejected("C10001", "AUTO", "0", "48", "28000", "AUTO", "amount");
+    }
+
+    @Test
+    public void eligibilityOnlyRejectsUnknownProductAndCollateral() {
+        assertEligibilityRejected("C10001", "BOAT", "20000", "48", "28000", "AUTO", "productCode");
+        assertEligibilityRejected("C10001", "AUTO", "20000", "48", "28000", "BOAT", "collateralType");
+        assertEligibilityRejected("C10001", "AUTO", "20000", "48", "-1", "AUTO", "collateralValue");
+        assertEligibilityRejected("bad id", "AUTO", "20000", "48", "28000", "AUTO", "customerId");
+    }
+
+    private static void assertEligibilityRejected(String cust, String prod, String amt, String term,
+                                                  String cval, String ctype, String field) {
+        try {
+            AppContext.getLoanApplicationManager().checkEligibilityOnly(cust, prod, amt, term, cval, ctype);
+            fail("expected InputValidationException for " + field);
+        } catch (InputValidationException e) {
+            assertTrue(e.getMessage(), e.getMessage().startsWith(field));
+        }
     }
 }
