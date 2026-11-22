@@ -436,7 +436,7 @@ Resources:
   FlowLogRole:
     Type: AWS::IAM::Role
     Properties:
-      Description: Allows VPC Flow Logs to write to its own log group only.
+      Description: Allows VPC Flow Logs to write to its own log group (plus the discovery calls the service makes).
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -454,8 +454,14 @@ Resources:
                 Action:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                  - logs:DescribeLogStreams
                 Resource: !Sub "${FlowLogGroup.Arn}:*"
+              - Effect: Allow
+                Action: logs:DescribeLogStreams
+                Resource: !GetAtt FlowLogGroup.Arn
+              # DescribeLogGroups does not support resource-level permissions.
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: "*"
 
   VpcFlowLog:
     Type: AWS::EC2::FlowLog
