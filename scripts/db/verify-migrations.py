@@ -73,7 +73,7 @@ def legacy_schema():
             parts = line.strip().rstrip(",").split()
             rest = " ".join(parts[2:]).upper()
             cols.append({"name": parts[0].lower(), "type": pg_type(parts[1]),
-                         "pk": "PRIMARY KEY" in rest, "identity": "AUTO_INCREMENT" in rest})
+                         "pk": "PRIMARY KEY" in rest, "identity": "AUTO_INCREMENT" in rest or "AS IDENTITY" in rest})
         tables[name.lower()] = cols
     return tables
 
