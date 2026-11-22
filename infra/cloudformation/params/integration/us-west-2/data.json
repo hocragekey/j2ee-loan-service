@@ -1,0 +1,15 @@
+{
+  "EnvironmentName": "integration",
+  "ServiceName": "loan-svc",
+  "NetworkStackName": "loan-svc-integration-network",
+  "RegionRole": "secondary",
+  "GlobalClusterIdentifier": "loan-svc-integration-global",
+  "EngineVersion": "16.4",
+  "InstanceClass": "db.serverless",
+  "ServerlessMinCapacity": "0.5",
+  "ServerlessMaxCapacity": "2",
+  "CreateReaderInstance": "false",
+  "DbDeletionProtection": "false",
+  "DataDeletionPolicy": "Snapshot",
+  "BackupRetentionDays": "7"
+}

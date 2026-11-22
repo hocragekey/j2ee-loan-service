@@ -1,0 +1,220 @@
+# cfn-guard unit tests: cfn-guard test -r infra/guard/loan-service.guard -t <this file>
+---
+- name: compliant Aurora cluster with parameterized retention
+  input:
+    Parameters:
+      DataDeletionPolicy: { Default: Retain }
+      DbDeletionProtection: { Default: "true" }
+    Resources:
+      DbCluster:
+        Type: AWS::RDS::DBCluster
+        DeletionPolicy: { Ref: DataDeletionPolicy }
+        UpdateReplacePolicy: { Ref: DataDeletionPolicy }
+        Properties:
+          StorageEncrypted: true
+          KmsKeyId: { Ref: Key }
+          DeletionProtection: { Ref: DbDeletionProtection }
+  expectations:
+    rules:
+      aurora_cluster_encrypted: PASS
+      aurora_cluster_retained: PASS
+      aurora_deletion_protection: PASS
+      aurora_deletion_policy_parameter_defaults_to_retain: PASS
+      aurora_deletion_protection_parameter_defaults_to_true: PASS
+
+- name: unencrypted, deletable Aurora cluster
+  input:
+    Resources:
+      DbCluster:
+        Type: AWS::RDS::DBCluster
+        DeletionPolicy: Delete
+        Properties:
+          StorageEncrypted: false
+          DeletionProtection: false
+  expectations:
+    rules:
+      aurora_cluster_encrypted: FAIL
+      aurora_cluster_retained: FAIL
+      aurora_deletion_protection: FAIL
+
+- name: retention parameters defaulting to unsafe values
+  input:
+    Parameters:
+      DataDeletionPolicy: { Default: Snapshot }
+      DbDeletionProtection: { Default: "false" }
+    Resources: {}
+  expectations:
+    rules:
+      aurora_deletion_policy_parameter_defaults_to_retain: FAIL
+      aurora_deletion_protection_parameter_defaults_to_true: FAIL
+
+- name: public DB instance
+  input:
+    Resources:
+      Db:
+        Type: AWS::RDS::DBInstance
+        Properties: { PubliclyAccessible: true }
+  expectations:
+    rules:
+      db_instances_not_public: FAIL
+
+- name: private DB instance
+  input:
+    Resources:
+      Db:
+        Type: AWS::RDS::DBInstance
+        Properties: { PubliclyAccessible: false }
+  expectations:
+    rules:
+      db_instances_not_public: PASS
+
+- name: KMS key without rotation or retention
+  input:
+    Resources:
+      Key:
+        Type: AWS::KMS::Key
+        Properties: { EnableKeyRotation: false }
+  expectations:
+    rules:
+      kms_keys_rotated_and_retained: FAIL
+
+- name: secret with literal value and no CMK
+  input:
+    Resources:
+      Secret:
+        Type: AWS::SecretsManager::Secret
+        Properties: { SecretString: hunter2 }
+  expectations:
+    rules:
+      secrets_use_cmk: FAIL
+
+- name: ALB security group open on 80/443 only
+  input:
+    Resources:
+      AlbSg:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+          SecurityGroupIngress:
+            - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }
+            - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIpv6: "::/0" }
+            - Fn::If:
+                - HasCertificate
+                - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+                - { Ref: AWS::NoValue }
+  expectations:
+    rules:
+      open_ingress_only_web_ports: PASS
+      open_ingress_only_web_ports_conditional: PASS
+
+- name: SSH open to the internet
+  input:
+    Resources:
+      BadSg:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+          SecurityGroupIngress:
+            - { IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: 0.0.0.0/0 }
+  expectations:
+    rules:
+      open_ingress_only_web_ports: FAIL
+
+- name: PostgreSQL open to the internet inside Fn::If
+  input:
+    Resources:
+      BadSg:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+          SecurityGroupIngress:
+            - Fn::If:
+                - SomeCondition
+                - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, CidrIp: 0.0.0.0/0 }
+                - { Ref: AWS::NoValue }
+  expectations:
+    rules:
+      open_ingress_only_web_ports_conditional: FAIL
+
+- name: standalone ingress open to the internet
+  input:
+    Resources:
+      Rule:
+        Type: AWS::EC2::SecurityGroupIngress
+        Properties: { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, CidrIp: 0.0.0.0/0 }
+  expectations:
+    rules:
+      standalone_ingress_not_open: FAIL
+
+- name: mutable, unscanned ECR repository
+  input:
+    Resources:
+      Repo:
+        Type: AWS::ECR::Repository
+        Properties:
+          ImageTagMutability: MUTABLE
+          ImageScanningConfiguration: { ScanOnPush: false }
+  expectations:
+    rules:
+      ecr_scan_and_immutable: FAIL
+
+- name: log group without retention
+  input:
+    Resources:
+      Logs:
+        Type: AWS::Logs::LogGroup
+        Properties: { LogGroupName: x }
+  expectations:
+    rules:
+      log_groups_have_retention: FAIL
+
+- name: admin-style IAM role
+  input:
+    Resources:
+      Role:
+        Type: AWS::IAM::Role
+        Properties:
+          ManagedPolicyArns:
+            - arn:aws:iam::aws:policy/AdministratorAccess
+          Policies:
+            - PolicyName: everything
+              PolicyDocument:
+                Statement:
+                  - { Effect: Allow, Action: "*", Resource: "*" }
+  expectations:
+    rules:
+      iam_no_full_wildcards: FAIL
+      iam_no_admin_managed_policy: FAIL
+
+- name: ECS service with public IP and no circuit breaker
+  input:
+    Resources:
+      Svc:
+        Type: AWS::ECS::Service
+        Properties:
+          NetworkConfiguration:
+            AwsvpcConfiguration: { AssignPublicIp: ENABLED }
+          DeploymentConfiguration:
+            DeploymentCircuitBreaker: { Enable: false, Rollback: false }
+  expectations:
+    rules:
+      ecs_service_private_with_circuit_breaker: FAIL
+
+- name: plain HTTP forward listener without the NoCertificate condition
+  input:
+    Resources:
+      Http:
+        Type: AWS::ElasticLoadBalancingV2::Listener
+        Properties:
+          Protocol: HTTP
+          DefaultActions: [{ Type: forward }]
+  expectations:
+    rules:
+      http_listeners_redirect: FAIL
+
+- name: load balancer without WAF
+  input:
+    Resources:
+      Alb:
+        Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+        Properties: {}
+  expectations:
+    rules:
+      public_alb_has_waf: FAIL

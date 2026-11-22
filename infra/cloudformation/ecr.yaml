@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  loan-service ECR repository (deploy in every active region). Scan on push,
+  immutable tags, KMS encryption and a lifecycle policy. In the image source
+  region (IsReplicationSource=true) it also sets the account's registry
+  replication rule so pushed images are copied to the other active regions.
+  Controls: PLAT-01, PLAT-08, PLAT-10, DEL-08.
+
+Parameters:
+  RepositoryName:
+    Type: String
+    Default: loan-service
+    AllowedPattern: "^[a-z][a-z0-9-]{1,62}$"
+    Description: Repository name (same name in every active region).
+  IsReplicationSource:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      "true" only in the region CI pushes to. Creates the registry-wide
+      replication configuration (one per account and region; it replaces any
+      existing replication configuration in this registry).
+  ReplicationDestinationRegion:
+    Type: String
+    Default: us-west-2
+    AllowedPattern: "^[a-z]{2}-[a-z]+-\\d$"
+    Description: Region images are replicated to (the other active region). Used only when IsReplicationSource is "true".
+  UntaggedImageExpiryDays:
+    Type: Number
+    Default: 14
+    MinValue: 1
+    Description: Days after which untagged images are expired.
+  MaxTaggedImages:
+    Type: Number
+    Default: 200
+    MinValue: 10
+    Description: Maximum number of tagged images kept (oldest expire first).
+
+Conditions:
+  IsSource: !Equals [!Ref IsReplicationSource, "true"]
+
+Resources:
+  Repository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: !Ref RepositoryName
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: KMS
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged images",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": ${UntaggedImageExpiryDays}
+                },
+                "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Keep the most recent tagged images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": ${MaxTaggedImages}
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - { Key: Service, Value: !Ref RepositoryName }
+
+  RegistryReplication:
+    Type: AWS::ECR::ReplicationConfiguration
+    Condition: IsSource
+    Properties:
+      ReplicationConfiguration:
+        Rules:
+          - Destinations:
+              - Region: !Ref ReplicationDestinationRegion
+                RegistryId: !Ref AWS::AccountId
+            RepositoryFilters:
+              - Filter: !Ref RepositoryName
+                FilterType: PREFIX_MATCH
+
+Outputs:
+  RepositoryName:
+    Description: ECR repository name.
+    Value: !Ref Repository
+    Export: { Name: !Sub "${AWS::StackName}-RepositoryName" }
+  RepositoryArn:
+    Description: ECR repository ARN (scopes the ECS execution role pull permission).
+    Value: !GetAtt Repository.Arn
+    Export: { Name: !Sub "${AWS::StackName}-RepositoryArn" }
+  RepositoryUri:
+    Description: ECR repository URI in this region.
+    Value: !GetAtt Repository.RepositoryUri
+    Export: { Name: !Sub "${AWS::StackName}-RepositoryUri" }

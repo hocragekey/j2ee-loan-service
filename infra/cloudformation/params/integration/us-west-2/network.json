@@ -1,0 +1,14 @@
+{
+  "EnvironmentName": "integration",
+  "ServiceName": "loan-svc",
+  "VpcCidr": "10.61.0.0/16",
+  "PublicSubnetACidr": "10.61.0.0/24",
+  "PublicSubnetBCidr": "10.61.1.0/24",
+  "AppSubnetACidr": "10.61.10.0/24",
+  "AppSubnetBCidr": "10.61.11.0/24",
+  "DataSubnetACidr": "10.61.20.0/24",
+  "DataSubnetBCidr": "10.61.21.0/24",
+  "NatGatewayMode": "Single",
+  "CreateInterfaceEndpoints": "false",
+  "FlowLogRetentionDays": "14"
+}

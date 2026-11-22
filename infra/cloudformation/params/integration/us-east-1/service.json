@@ -1,0 +1,18 @@
+{
+  "EnvironmentName": "integration",
+  "ServiceName": "loan-svc",
+  "RegionRole": "primary",
+  "NetworkStackName": "loan-svc-integration-network",
+  "EdgeStackName": "loan-svc-integration-edge",
+  "DataStackName": "loan-svc-integration-data",
+  "EcrStackName": "loan-svc-integration-ecr",
+  "ContainerPort": "8080",
+  "TaskCpu": "512",
+  "TaskMemory": "1024",
+  "HealthCheckGracePeriodSeconds": "120",
+  "DesiredCount": "1",
+  "MinCapacity": "1",
+  "MaxCapacity": "2",
+  "LogRetentionDays": "14",
+  "EnableOtelSidecar": "false"
+}

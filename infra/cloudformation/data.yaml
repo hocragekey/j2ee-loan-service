@@ -1,0 +1,510 @@
+AWSTemplateFormatVersion: "2010-09-09"
+# LanguageExtensions lets DeletionPolicy/UpdateReplacePolicy follow parameters
+# (Retain for production; Snapshot allowed for integration teardown).
+Transform: AWS::LanguageExtensions
+Description: >-
+  loan-service Aurora PostgreSQL Global Database, one stack per active region.
+  RegionRole=primary creates the global cluster, the writer regional cluster, a
+  multi-Region KMS key and the master secret in Secrets Manager.
+  RegionRole=secondary joins the global cluster as a read-replica region with
+  write forwarding enabled, so app tasks there can write without a second
+  primary. Durable data: DeletionProtection plus DeletionPolicy and
+  UpdateReplacePolicy Retain by default (integration may use Snapshot and no
+  deletion protection via parameters). Controls: PLAT-04, PLAT-06, PLAT-10, RES-08,
+  RES-11, IAC-03, IAC-08, IAC-09.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Environment }
+        Parameters: [EnvironmentName, ServiceName, NetworkStackName, RegionRole]
+      - Label: { default: Global database }
+        Parameters:
+          - GlobalClusterIdentifier
+          - EngineVersion
+          - ClusterParameterGroupFamily
+          - DatabaseName
+          - MasterUsername
+          - InstanceClass
+          - ServerlessMinCapacity
+          - ServerlessMaxCapacity
+          - CreateReaderInstance
+          - BackupRetentionDays
+          - DbDeletionProtection
+          - DataDeletionPolicy
+      - Label: { default: Secondary region only }
+        Parameters: [PrimaryKmsKeyArn, PrimaryDbSecretArn]
+      - Label: { default: Primary region only }
+        Parameters: [SecretReplicaRegion]
+      - Label: { default: Alarms }
+        Parameters: [AlarmTopicArn, ReplicationLagThresholdMs]
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    AllowedValues: [integration, dev, staging, prod]
+    Description: Deployment environment name. Names are prefixed ServiceName-EnvironmentName (e.g. loan-svc-integration).
+  ServiceName:
+    Type: String
+    Default: loan-service
+    AllowedPattern: "^[a-z][a-z0-9-]{1,30}$"
+    Description: Service name used in resource names.
+  NetworkStackName:
+    Type: String
+    Description: Name of the network.yaml stack in this region.
+  RegionRole:
+    Type: String
+    AllowedValues: [primary, secondary]
+    Description: primary (global writer region) or secondary (replica region with write forwarding).
+  GlobalClusterIdentifier:
+    Type: String
+    AllowedPattern: "^[a-z][a-z0-9-]{1,62}$"
+    Description: Aurora global cluster identifier, same value in every region (e.g. loan-service-prod-global).
+  EngineVersion:
+    Type: String
+    Default: "16.4"
+    Description: Aurora PostgreSQL version. Must support Global Database and write forwarding (14.9+, 15.4+, 16.x).
+  ClusterParameterGroupFamily:
+    Type: String
+    Default: aurora-postgresql16
+    Description: Parameter group family matching EngineVersion.
+  DatabaseName:
+    Type: String
+    Default: loanservice
+    AllowedPattern: "^[a-z][a-z0-9_]{1,62}$"
+    Description: Database owned by this service (PLAT-04 schema/database per service). Primary only.
+  MasterUsername:
+    Type: String
+    Default: loanadmin
+    AllowedPattern: "^[a-z][a-z0-9_]{1,15}$"
+    Description: Master user name. The password is generated into Secrets Manager; never passed as a parameter.
+  InstanceClass:
+    Type: String
+    Default: db.r6g.large
+    Description: >-
+      Instance class for the regional instances. Production default is
+      memory-optimized provisioned; "db.serverless" selects Aurora Serverless v2
+      (used for integration at minimum capacity).
+  ServerlessMinCapacity:
+    Type: Number
+    Default: 0.5
+    MinValue: 0.5
+    MaxValue: 256
+    Description: Aurora Serverless v2 minimum ACUs (only when InstanceClass is db.serverless).
+  ServerlessMaxCapacity:
+    Type: Number
+    Default: 4
+    MinValue: 1
+    MaxValue: 256
+    Description: Aurora Serverless v2 maximum ACUs (only when InstanceClass is db.serverless).
+  CreateReaderInstance:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Create a second instance in another AZ (RES-11). "false" is integration/demo
+      only; Aurora storage stays multi-AZ but compute is single-AZ.
+  DbDeletionProtection:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Deletion protection on the global and regional clusters ("false" for integration teardown only).
+  DataDeletionPolicy:
+    Type: String
+    Default: Retain
+    AllowedValues: [Retain, Snapshot]
+    Description: >-
+      DeletionPolicy/UpdateReplacePolicy for the regional cluster. Retain for
+      production (IAC-09). Snapshot (integration only) takes a final snapshot
+      and deletes the cluster; instances and the global cluster are then
+      deleted with the stack. KMS key and secret are always retained so the
+      snapshot stays restorable.
+  BackupRetentionDays:
+    Type: Number
+    Default: 14
+    MinValue: 1
+    MaxValue: 35
+    Description: Automated backup retention in days.
+  PrimaryKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      Secondary only. ARN of the multi-Region primary KMS key (output DataKeyArn
+      of the primary data stack). A replica key is created in this region.
+  PrimaryDbSecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:\\d{12}:secret:.+$"
+    Description: >-
+      Secondary only. ARN of the primary master secret (output DbSecretArn of
+      the primary data stack). This stack exports the same ARN with this
+      region substituted, i.e. the in-region replica created once the primary
+      stack sets SecretReplicaRegion.
+  SecretReplicaRegion:
+    Type: String
+    Default: ""
+    Description: >-
+      Primary only. Region to replicate the master secret to. Leave empty on
+      first create; set it after the secondary data stack exists (its KMS
+      replica key must exist first). See infra/README.md stack order.
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: Optional SNS topic ARN for alarm notifications.
+  ReplicationLagThresholdMs:
+    Type: Number
+    Default: 2000
+    MinValue: 100
+    Description: Secondary only. Alarm when global replication lag exceeds this (milliseconds).
+
+Rules:
+  SecondaryNeedsPrimaryKey:
+    RuleCondition: !Equals [!Ref RegionRole, secondary]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref PrimaryKmsKeyArn, ""]]
+        AssertDescription: PrimaryKmsKeyArn is required when RegionRole is secondary.
+      - Assert: !Not [!Equals [!Ref PrimaryDbSecretArn, ""]]
+        AssertDescription: PrimaryDbSecretArn is required when RegionRole is secondary.
+
+Conditions:
+  IsPrimary: !Equals [!Ref RegionRole, primary]
+  IsSecondary: !Equals [!Ref RegionRole, secondary]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+  IsServerless: !Equals [!Ref InstanceClass, db.serverless]
+  CreateReader: !Equals [!Ref CreateReaderInstance, "true"]
+  RetainData: !Equals [!Ref DataDeletionPolicy, Retain]
+  ReplicateSecret: !And
+    - !Condition IsPrimary
+    - !Not [!Equals [!Ref SecretReplicaRegion, ""]]
+
+Resources:
+  # Key policy delegates administration to the account's IAM (standard KMS
+  # pattern); "kms:*" on "*" in a key policy refers only to this key.
+  DataKey:
+    Type: AWS::KMS::Key
+    Condition: IsPrimary
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "${ServiceName}-${EnvironmentName} Aurora and secret encryption (multi-Region primary)"
+      MultiRegion: true
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdministration
+            Effect: Allow
+            Principal: { AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" }
+            Action: "kms:*"
+            Resource: "*"
+
+  DataKeyAlias:
+    Type: AWS::KMS::Alias
+    Condition: IsPrimary
+    Properties:
+      AliasName: !Sub "alias/${ServiceName}-${EnvironmentName}-data"
+      TargetKeyId: !Ref DataKey
+
+  DataKeyReplicaAlias:
+    Type: AWS::KMS::Alias
+    Condition: IsSecondary
+    Properties:
+      AliasName: !Sub "alias/${ServiceName}-${EnvironmentName}-data"
+      TargetKeyId: !Ref DataKeyReplica
+
+  DataKeyReplica:
+    Type: AWS::KMS::ReplicaKey
+    Condition: IsSecondary
+    Metadata:
+      cfn-lint:
+        config:
+          # PrimaryKmsKeyArn defaults to "" for the primary role; the
+          # SecondaryNeedsPrimaryKey rule enforces a value for secondary.
+          ignore_checks: [W1030]
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "${ServiceName}-${EnvironmentName} Aurora and secret encryption (replica)"
+      PrimaryKeyArn: !Ref PrimaryKmsKeyArn
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdministration
+            Effect: Allow
+            Principal: { AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" }
+            Action: "kms:*"
+            Resource: "*"
+
+  DbMasterSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: IsPrimary
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "${ServiceName}-${EnvironmentName}/aurora/master"
+      Description: Aurora master credentials (generated; never in git or parameters).
+      KmsKeyId: !Ref DataKey
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${MasterUsername}"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: "\"@/\\'"
+      ReplicaRegions: !If
+        - ReplicateSecret
+        - - Region: !Ref SecretReplicaRegion
+            KmsKeyId: !GetAtt DataKey.KeyId
+        - !Ref AWS::NoValue
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub "${ServiceName}-${EnvironmentName}-data"
+      DBSubnetGroupDescription: !Sub "${ServiceName}-${EnvironmentName} private data subnets (two AZs)"
+      SubnetIds: !Split [",", !ImportValue { "Fn::Sub": "${NetworkStackName}-DataSubnetIds" }]
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ServiceName}-${EnvironmentName}-aurora"
+      GroupDescription: Aurora PostgreSQL - inbound only from loan-service ECS tasks
+      VpcId: !ImportValue { "Fn::Sub": "${NetworkStackName}-VpcId" }
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !ImportValue { "Fn::Sub": "${NetworkStackName}-AppSecurityGroupId" }
+          Description: PostgreSQL from ECS tasks
+      SecurityGroupEgress:
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 127.0.0.1/32
+          Description: No egress (placeholder rule replaces the default allow-all)
+
+  ClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: !Sub "${ServiceName}-${EnvironmentName} Aurora PostgreSQL cluster parameters"
+      Family: !Ref ClusterParameterGroupFamily
+      Parameters:
+        rds.force_ssl: "1"
+        apg_write_forward.consistency_mode: session
+
+  GlobalCluster:
+    Type: AWS::RDS::GlobalCluster
+    Condition: IsPrimary
+    DeletionPolicy: !If [RetainData, Retain, Delete]
+    UpdateReplacePolicy: !If [RetainData, Retain, Delete]
+    Properties:
+      GlobalClusterIdentifier: !Ref GlobalClusterIdentifier
+      Engine: aurora-postgresql
+      EngineVersion: !Ref EngineVersion
+      StorageEncrypted: true
+      DeletionProtection: !Ref DbDeletionProtection
+
+  DbCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: !Ref DataDeletionPolicy
+    UpdateReplacePolicy: !Ref DataDeletionPolicy
+    Properties:
+      DBClusterIdentifier: !Sub "${ServiceName}-${EnvironmentName}-${AWS::Region}"
+      GlobalClusterIdentifier: !If [IsPrimary, !Ref GlobalCluster, !Ref GlobalClusterIdentifier]
+      Engine: aurora-postgresql
+      EngineVersion: !Ref EngineVersion
+      DBClusterParameterGroupName: !Ref ClusterParameterGroup
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VpcSecurityGroupIds: [!Ref DbSecurityGroup]
+      Port: 5432
+      StorageEncrypted: true
+      KmsKeyId: !If [IsPrimary, !GetAtt DataKey.Arn, !GetAtt DataKeyReplica.Arn]
+      DeletionProtection: !Ref DbDeletionProtection
+      BackupRetentionPeriod: !Ref BackupRetentionDays
+      CopyTagsToSnapshot: true
+      EnableIAMDatabaseAuthentication: true
+      EnableCloudwatchLogsExports: [postgresql]
+      EnableGlobalWriteForwarding: !If [IsSecondary, true, !Ref AWS::NoValue]
+      ServerlessV2ScalingConfiguration: !If
+        - IsServerless
+        - MinCapacity: !Ref ServerlessMinCapacity
+          MaxCapacity: !Ref ServerlessMaxCapacity
+        - !Ref AWS::NoValue
+      DatabaseName: !If [IsPrimary, !Ref DatabaseName, !Ref AWS::NoValue]
+      MasterUsername: !If
+        - IsPrimary
+        - !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:username}}"
+        - !Ref AWS::NoValue
+      MasterUserPassword: !If
+        - IsPrimary
+        - !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:password}}"
+        - !Ref AWS::NoValue
+      Tags:
+        - { Key: Environment, Value: !Ref EnvironmentName }
+        - { Key: Service, Value: !Ref ServiceName }
+        - { Key: RegionRole, Value: !Ref RegionRole }
+
+  SecretClusterAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Condition: IsPrimary
+    Properties:
+      SecretId: !Ref DbMasterSecret
+      TargetId: !Ref DbCluster
+      TargetType: AWS::RDS::DBCluster
+
+  MonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: RDS Enhanced Monitoring publishing role.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: monitoring.rds.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+
+  # Two instances so each region has a reader in a second AZ (RES-11).
+  DbInstanceA:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: !If [RetainData, Retain, Delete]
+    UpdateReplacePolicy: !If [RetainData, Retain, Delete]
+    Properties:
+      DBInstanceIdentifier: !Sub "${ServiceName}-${EnvironmentName}-${AWS::Region}-a"
+      DBClusterIdentifier: !Ref DbCluster
+      DBInstanceClass: !Ref InstanceClass
+      Engine: aurora-postgresql
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      PubliclyAccessible: false
+      AutoMinorVersionUpgrade: true
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: !If [IsPrimary, !GetAtt DataKey.Arn, !GetAtt DataKeyReplica.Arn]
+      PerformanceInsightsRetentionPeriod: 7
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt MonitoringRole.Arn
+
+  DbInstanceB:
+    Type: AWS::RDS::DBInstance
+    Condition: CreateReader
+    DeletionPolicy: !If [RetainData, Retain, Delete]
+    UpdateReplacePolicy: !If [RetainData, Retain, Delete]
+    Properties:
+      DBInstanceIdentifier: !Sub "${ServiceName}-${EnvironmentName}-${AWS::Region}-b"
+      DBClusterIdentifier: !Ref DbCluster
+      DBInstanceClass: !Ref InstanceClass
+      Engine: aurora-postgresql
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      PubliclyAccessible: false
+      AutoMinorVersionUpgrade: true
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: !If [IsPrimary, !GetAtt DataKey.Arn, !GetAtt DataKeyReplica.Arn]
+      PerformanceInsightsRetentionPeriod: 7
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt MonitoringRole.Arn
+
+  DbCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} Aurora CPU above 80% (${AWS::Region})"
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+        - { Name: DBClusterIdentifier, Value: !Ref DbCluster }
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  DbFreeableMemoryLowAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} Aurora freeable memory below 512 MiB (${AWS::Region})"
+      Namespace: AWS/RDS
+      MetricName: FreeableMemory
+      Dimensions:
+        - { Name: DBClusterIdentifier, Value: !Ref DbCluster }
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 536870912
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: missing
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  DbConnectionsHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} Aurora connections above 500 (${AWS::Region})"
+      Namespace: AWS/RDS
+      MetricName: DatabaseConnections
+      Dimensions:
+        - { Name: DBClusterIdentifier, Value: !Ref DbCluster }
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 500
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  GlobalReplicationLagAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsSecondary
+    Properties:
+      AlarmDescription: !Sub "${ServiceName}-${EnvironmentName} Aurora global replication lag high (${AWS::Region})"
+      Namespace: AWS/RDS
+      MetricName: AuroraGlobalDBReplicationLag
+      Dimensions:
+        - { Name: DBClusterIdentifier, Value: !Ref DbCluster }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: !Ref ReplicationLagThresholdMs
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+Outputs:
+  ClusterIdentifier:
+    Description: Regional Aurora cluster identifier.
+    Value: !Ref DbCluster
+    Export: { Name: !Sub "${AWS::StackName}-ClusterIdentifier" }
+  ClusterEndpoint:
+    Description: >-
+      Regional cluster (writer) endpoint. In the secondary region, writes sent
+      here are forwarded to the global writer (write forwarding).
+    Value: !GetAtt DbCluster.Endpoint.Address
+    Export: { Name: !Sub "${AWS::StackName}-ClusterEndpoint" }
+  ReaderEndpoint:
+    Description: Regional reader endpoint.
+    Value: !GetAtt DbCluster.ReadEndpoint.Address
+    Export: { Name: !Sub "${AWS::StackName}-ReaderEndpoint" }
+  ClusterPort:
+    Description: PostgreSQL port.
+    Value: !GetAtt DbCluster.Endpoint.Port
+    Export: { Name: !Sub "${AWS::StackName}-ClusterPort" }
+  DatabaseName:
+    Description: Database owned by the service.
+    Value: !Ref DatabaseName
+    Export: { Name: !Sub "${AWS::StackName}-DatabaseName" }
+  DbSecretArn:
+    Description: Master secret ARN readable in this region (primary secret or its in-region replica).
+    Value: !If
+      - IsPrimary
+      - !Ref DbMasterSecret
+      - !Join
+        - ":"
+        - - !Select [0, !Split [":", !Ref PrimaryDbSecretArn]]
+          - !Select [1, !Split [":", !Ref PrimaryDbSecretArn]]
+          - secretsmanager
+          - !Ref AWS::Region
+          - !Select [4, !Split [":", !Ref PrimaryDbSecretArn]]
+          - secret
+          - !Select [6, !Split [":", !Ref PrimaryDbSecretArn]]
+    Export: { Name: !Sub "${AWS::StackName}-DbSecretArn" }
+  DataKeyArn:
+    Description: KMS key ARN used for Aurora and the secret in this region.
+    Value: !If [IsPrimary, !GetAtt DataKey.Arn, !GetAtt DataKeyReplica.Arn]
+    Export: { Name: !Sub "${AWS::StackName}-DataKeyArn" }
