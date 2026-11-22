@@ -55,6 +55,10 @@ public final class PostgresSupport {
     }
 
     public static ConfigurableApplicationContext start(String... extra) {
+        return start(WebApplicationType.NONE, extra);
+    }
+
+    public static ConfigurableApplicationContext start(WebApplicationType type, String... extra) {
         PostgreSQLContainer<?> pg = container();
         List<String> args = new ArrayList<String>(Arrays.asList(
                 "--DB_HOST=" + pg.getHost(),
@@ -65,7 +69,7 @@ public final class PostgresSupport {
                 "--DB_SSLMODE=disable"));
         args.addAll(Arrays.asList(extra));
         return new SpringApplicationBuilder(LoanServiceApplication.class)
-                .web(WebApplicationType.NONE)
+                .web(type)
                 .run(args.toArray(new String[0]));
     }
 

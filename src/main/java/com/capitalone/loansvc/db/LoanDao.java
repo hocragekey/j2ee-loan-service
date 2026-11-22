@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -55,20 +57,20 @@ public class LoanDao {
                     "ELIG_CD=?, DECISION_CD=?, STATUS_CD=?, UPDATE_TS=? WHERE APPL_ID=?");
             ps.setString(1, app.getCustomerId());
             ps.setString(2, app.getProductCode());
-            ps.setBigDecimal(3, app.getRequestedAmount());
+            ps.setBigDecimal(3, fit(app.getRequestedAmount(), 2));
             ps.setInt(4, app.getTermMonths());
             ps.setString(5, app.getPurposeCode());
-            ps.setBigDecimal(6, app.getCollateralValue());
+            ps.setBigDecimal(6, fit(app.getCollateralValue(), 2));
             ps.setString(7, app.getCollateralType());
             if (app.getFicoScore() == null) {
                 ps.setNull(8, java.sql.Types.INTEGER);
             } else {
                 ps.setInt(8, app.getFicoScore());
             }
-            ps.setBigDecimal(9, app.getLtvPct());
-            ps.setBigDecimal(10, app.getDtiPct());
-            ps.setBigDecimal(11, app.getBaseRate());
-            ps.setBigDecimal(12, app.getFinalRate());
+            ps.setBigDecimal(9, fit(app.getLtvPct(), 4));
+            ps.setBigDecimal(10, fit(app.getDtiPct(), 4));
+            ps.setBigDecimal(11, fit(app.getBaseRate(), 4));
+            ps.setBigDecimal(12, fit(app.getFinalRate(), 4));
             ps.setString(13, app.getEligibilityCode());
             ps.setString(14, app.getDecisionCode());
             ps.setString(15, app.getStatusCode());
@@ -148,25 +150,37 @@ public class LoanDao {
         }
     }
 
+    /**
+     * H2 DECIMAL(p,s) semantics on every database: a value keeps its own scale (18000 stays 18000),
+     * and only digits beyond the legacy column scale are rounded HALF_UP. PostgreSQL stores these
+     * columns as unconstrained numeric (V3) so the written scale is what reads back (TEST-03).
+     */
+    static BigDecimal fit(BigDecimal value, int columnScale) {
+        if (value == null || value.scale() <= columnScale) {
+            return value;
+        }
+        return value.setScale(columnScale, RoundingMode.HALF_UP);
+    }
+
     private void bind(PreparedStatement ps, LoanApplication app) throws Exception {
         Timestamp now = new Timestamp(System.currentTimeMillis());
         ps.setString(1, app.getApplicationId());
         ps.setString(2, app.getCustomerId());
         ps.setString(3, app.getProductCode());
-        ps.setBigDecimal(4, app.getRequestedAmount());
+        ps.setBigDecimal(4, fit(app.getRequestedAmount(), 2));
         ps.setInt(5, app.getTermMonths());
         ps.setString(6, app.getPurposeCode());
-        ps.setBigDecimal(7, app.getCollateralValue());
+        ps.setBigDecimal(7, fit(app.getCollateralValue(), 2));
         ps.setString(8, app.getCollateralType());
         if (app.getFicoScore() == null) {
             ps.setNull(9, java.sql.Types.INTEGER);
         } else {
             ps.setInt(9, app.getFicoScore());
         }
-        ps.setBigDecimal(10, app.getLtvPct());
-        ps.setBigDecimal(11, app.getDtiPct());
-        ps.setBigDecimal(12, app.getBaseRate());
-        ps.setBigDecimal(13, app.getFinalRate());
+        ps.setBigDecimal(10, fit(app.getLtvPct(), 4));
+        ps.setBigDecimal(11, fit(app.getDtiPct(), 4));
+        ps.setBigDecimal(12, fit(app.getBaseRate(), 4));
+        ps.setBigDecimal(13, fit(app.getFinalRate(), 4));
         ps.setString(14, app.getEligibilityCode());
         ps.setString(15, app.getDecisionCode());
         ps.setString(16, app.getStatusCode());
