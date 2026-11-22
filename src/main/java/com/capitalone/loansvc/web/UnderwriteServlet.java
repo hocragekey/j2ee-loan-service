@@ -2,6 +2,7 @@ package com.capitalone.loansvc.web;
 
 import com.capitalone.loansvc.model.LoanApplication;
 import com.capitalone.loansvc.util.AppContext;
+import com.capitalone.loansvc.util.LoanInputValidator;
 import com.capitalone.loansvc.util.StringHelper;
 
 import javax.servlet.ServletException;
@@ -20,7 +21,12 @@ public class UnderwriteServlet extends HttpServlet {
             resp.getWriter().println("applId required");
             return;
         }
-        LoanApplication app = AppContext.getLoanApplicationManager().getApplication(applId);
+        if (!LoanInputValidator.isValidApplicationId(applId)) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().println("applId invalid");
+            return;
+        }
+        LoanApplication app = AppContext.getLoanApplicationManager().getApplication(applId.trim());
         req.setAttribute("app", app);
         req.getRequestDispatcher("/underwriting-result.jsp").forward(req, resp);
     }
