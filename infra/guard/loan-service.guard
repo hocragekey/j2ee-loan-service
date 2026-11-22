@@ -217,14 +217,22 @@ rule ecs_service_private_with_circuit_breaker when %ecs_services !empty {
 
 # ---------- Edge (PLAT-02) ----------
 
-# HTTP listeners redirect to HTTPS. The only exception is the forward listener
-# gated on the NoCertificate condition (integration-only, documented gap).
+# HTTP listeners redirect to HTTPS. The only exception is a listener whose
+# actions are Fn::If [HasCertificate, <redirect>, <forward>] (integration-only
+# HTTP when no certificate exists, documented gap).
 rule http_listeners_redirect when %listeners !empty {
     %listeners[ Properties.Protocol == 'HTTP' ] {
         Properties.DefaultActions[*].Type == 'redirect' or
-        Condition == 'NoCertificate'
-            << HTTP listeners must redirect to HTTPS (NoCertificate integration exception only) >>
+        Properties.DefaultActions.'Fn::If'[0] == 'HasCertificate'
+            << HTTP listeners must redirect to HTTPS (HasCertificate-gated integration exception only) >>
     }
+}
+
+let conditional_http_listeners = %listeners[ Properties.Protocol == 'HTTP' Properties.DefaultActions.'Fn::If' exists ]
+
+rule http_listeners_redirect_when_certificate when %conditional_http_listeners !empty {
+    %conditional_http_listeners.Properties.DefaultActions.'Fn::If'[1][*].Type == 'redirect'
+        << With a certificate, HTTP listeners must redirect to HTTPS >>
 }
 
 rule https_listeners_modern_tls when %listeners !empty {

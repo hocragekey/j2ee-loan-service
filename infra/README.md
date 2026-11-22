@@ -195,7 +195,7 @@ Guard rules (`guard/loan-service.guard`): Aurora encryption with a CMK,
 and retention, generated secrets only, no `0.0.0.0/0` or `::/0` ingress except
 ports 80/443, ECR scan-on-push + immutable tags, log retention, no wildcard IAM,
 private ECS tasks with the deployment circuit breaker, HTTP listeners redirect
-(except the `NoCertificate` integration listener), TLS 1.3 policy, WAF on every
+(except the `HasCertificate`-gated integration fallback), TLS 1.3 policy, WAF on every
 ALB template.
 
 ## Deploy the integration environment (change sets, `IAC-07`)

@@ -197,7 +197,40 @@
     rules:
       ecs_service_private_with_circuit_breaker: FAIL
 
-- name: plain HTTP forward listener without the NoCertificate condition
+- name: HTTP listener gated on HasCertificate (redirect with cert, forward without)
+  input:
+    Resources:
+      Http:
+        Type: AWS::ElasticLoadBalancingV2::Listener
+        Properties:
+          Protocol: HTTP
+          DefaultActions:
+            Fn::If:
+              - HasCertificate
+              - [{ Type: redirect }]
+              - [{ Type: forward }]
+  expectations:
+    rules:
+      http_listeners_redirect: PASS
+      http_listeners_redirect_when_certificate: PASS
+
+- name: HTTP listener that forwards even with a certificate
+  input:
+    Resources:
+      Http:
+        Type: AWS::ElasticLoadBalancingV2::Listener
+        Properties:
+          Protocol: HTTP
+          DefaultActions:
+            Fn::If:
+              - HasCertificate
+              - [{ Type: forward }]
+              - [{ Type: forward }]
+  expectations:
+    rules:
+      http_listeners_redirect_when_certificate: FAIL
+
+- name: plain HTTP forward listener without a HasCertificate gate
   input:
     Resources:
       Http:
