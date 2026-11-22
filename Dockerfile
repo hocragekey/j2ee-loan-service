@@ -24,6 +24,13 @@ RUN if [ -n "$MAVEN_MIRROR_URL" ]; then \
         "$MAVEN_MIRROR_URL" > /root/.m2/settings.xml; \
     fi
 
+# Amazon RDS CA bundle for PostgreSQL TLS verify-full (SEC, PLAT-04). Pinned by SHA-256; bump both
+# args when AWS publishes a new bundle (https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem).
+ARG RDS_CA_BUNDLE_URL=https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+ARG RDS_CA_BUNDLE_SHA256=90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b
+RUN curl -fsSL -o /build/rds-global-bundle.pem "$RDS_CA_BUNDLE_URL" && \
+    echo "${RDS_CA_BUNDLE_SHA256}  /build/rds-global-bundle.pem" | sha256sum -c -
+
 COPY pom.xml ./
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2/repository \
@@ -43,6 +50,7 @@ RUN echo "app:x:${APP_GID}:" >> /etc/group && \
 # The WAR stays root-owned and read-only to the app user; only /app/tmp is writable
 # (embedded Tomcat work dir + compiled JSPs).
 COPY --from=build /build/target/loan-service.war /app/loan-service.war
+COPY --from=build /build/rds-global-bundle.pem /app/certs/rds-global-bundle.pem
 
 # JVM sizing follows the container memory limit. Runtime configuration comes from
 # environment variables (PLAT-06): SERVER_PORT, SPRING_DATASOURCE_URL, LOAN_REGION_ID, ...

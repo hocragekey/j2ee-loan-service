@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>{@code DB_HOST} unset: in-memory H2, schema.sql/data.sql loaded at startup, Flyway off.</li>
  *   <li>{@code DB_HOST} set: PostgreSQL ({@code DB_PORT}, {@code DB_NAME}, {@code DB_USERNAME},
- *       {@code DB_PASSWORD}), schema {@code loan_svc}. Flyway owns schema and seed and runs only when
+ *       {@code DB_PASSWORD}), schema {@code loan_svc}, TLS {@code verify-full} against the RDS CA bundle
+ *       by default ({@code DB_SSLMODE}, {@code DB_SSLROOTCERT}). Flyway owns schema and seed and runs only when
  *       {@code SPRING_FLYWAY_ENABLED=true}; schema.sql/data.sql never run.</li>
  * </ul>
  * {@code LOAN_DB_WRITEFORWARDCONSISTENCY} (secondary region) sets
@@ -32,6 +33,9 @@ public class DatabaseEnvironmentPostProcessor implements EnvironmentPostProcesso
 
     static final String SOURCE_NAME = "loanDatabase";
     static final String SCHEMA = "loan_svc";
+    /** Amazon RDS CA bundle baked into the image (Dockerfile); override with DB_SSLROOTCERT. */
+    static final String DEFAULT_ROOT_CERT = "/app/certs/rds-global-bundle.pem";
+    static final List<String> SSL_MODES = Arrays.asList("verify-full", "verify-ca", "require", "disable");
     static final List<String> CONSISTENCY_MODES = Arrays.asList("session", "eventual", "global");
     private static final Pattern HOST = Pattern.compile("[A-Za-z0-9.-]{1,253}");
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_]{1,63}");
@@ -66,9 +70,17 @@ public class DatabaseEnvironmentPostProcessor implements EnvironmentPostProcesso
         require(PORT.matcher(port).matches(), "DB_PORT must be numeric");
         require(name != null && NAME.matcher(name).matches(), "DB_NAME must be set when DB_HOST is set");
         String sslMode = trimToNull(env.getProperty("DB_SSLMODE"));
+        sslMode = sslMode == null ? "verify-full" : sslMode.toLowerCase(Locale.ROOT);
+        require(SSL_MODES.contains(sslMode), "DB_SSLMODE must be one of " + SSL_MODES);
+        String ssl = "?sslmode=" + sslMode;
+        if (sslMode.startsWith("verify-")) {
+            String rootCert = trimToNull(env.getProperty("DB_SSLROOTCERT"));
+            ssl += "&sslrootcert=" + URLEncoder.encode(rootCert == null ? DEFAULT_ROOT_CERT : rootCert,
+                    StandardCharsets.UTF_8);
+        }
 
         props.put("spring.datasource.url", "jdbc:postgresql://" + host + ":" + port + "/" + name
-                + "?sslmode=" + (sslMode == null ? "require" : sslMode)
+                + ssl
                 + "&currentSchema=" + SCHEMA
                 + "&ApplicationName=loan-service"
                 + "&connectTimeout=" + env.getProperty("loan.db.connect-timeout-seconds", "5")
@@ -96,6 +108,7 @@ public class DatabaseEnvironmentPostProcessor implements EnvironmentPostProcesso
 
         env.getPropertySources().addFirst(new MapPropertySource(SOURCE_NAME, props));
         log.info("Database: PostgreSQL host=" + host + " port=" + port + " db=" + name + " schema=" + SCHEMA
+                + " sslmode=" + sslMode
                 + " role=" + (role == null ? "unset" : role) + " flyway=" + flyway
                 + " writeForwardConsistency=" + (consistency == null ? "unset" : consistency));
     }

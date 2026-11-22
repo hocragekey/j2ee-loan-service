@@ -61,7 +61,7 @@ DB_HOST=localhost DB_PORT=5432 DB_NAME=loanservice DB_USERNAME=loansvc DB_PASSWO
 With `DB_HOST` set, Flyway (`db/migration`, schema `loan_svc`) owns schema and seed and runs only when
 `SPRING_FLYWAY_ENABLED=true`; `schema.sql`/`data.sql` never run. `LOAN_DB_WRITEFORWARDCONSISTENCY`
 (secondary region) runs `SET apg_write_forward.consistency_mode = '<value>'` on each pooled connection,
-and `APP_REGION_ROLE=secondary` with Flyway enabled refuses to start. `DB_SSLMODE` defaults to `require`.
+and `APP_REGION_ROLE=secondary` with Flyway enabled refuses to start. TLS defaults to `DB_SSLMODE=verify-full` against the Amazon RDS CA bundle baked into the image (`/app/certs/rds-global-bundle.pem`, override with `DB_SSLROOTCERT`). A task that cannot reach the database fails at startup.
 `mvn -B verify` also runs the golden matrix against PostgreSQL 16 via Testcontainers (skipped
 locally without Docker, required in CI).
 

@@ -42,7 +42,8 @@ public class DatabaseEnvironmentPostProcessorTest {
         MockEnvironment env = run(aurora());
         String url = env.getProperty("spring.datasource.url");
         assertTrue(url, url.startsWith("jdbc:postgresql://loan.cluster-abc.us-east-1.rds.amazonaws.com:5432/loanservice?"));
-        assertTrue(url, url.contains("sslmode=require"));
+        assertTrue(url, url.contains("sslmode=verify-full"));
+        assertTrue(url, url.contains("sslrootcert=%2Fapp%2Fcerts%2Frds-global-bundle.pem"));
         assertTrue(url, url.contains("currentSchema=loan_svc"));
         assertTrue(url, url.contains("connectTimeout=5") && url.contains("socketTimeout=30"));
         assertTrue(url, url.contains("statement_timeout%3D15000"));
@@ -50,6 +51,16 @@ public class DatabaseEnvironmentPostProcessorTest {
         assertEquals("u", env.getProperty("spring.datasource.username"));
         assertEquals("p", env.getProperty("spring.datasource.password"));
         assertNull(env.getProperty("spring.datasource.hikari.connection-init-sql"));
+    }
+
+    @Test
+    public void sslModeAndRootCertCanBeOverridden() {
+        String url = run(aurora().withProperty("DB_SSLROOTCERT", "/etc/ssl/rds.pem"))
+                .getProperty("spring.datasource.url");
+        assertTrue(url, url.contains("sslmode=verify-full&sslrootcert=%2Fetc%2Fssl%2Frds.pem"));
+        url = run(aurora().withProperty("DB_SSLMODE", "disable")).getProperty("spring.datasource.url");
+        assertTrue(url, url.contains("sslmode=disable") && !url.contains("sslrootcert"));
+        expectFailure(aurora().withProperty("DB_SSLMODE", "allow&sslfactory=x"), "DB_SSLMODE");
     }
 
     @Test
