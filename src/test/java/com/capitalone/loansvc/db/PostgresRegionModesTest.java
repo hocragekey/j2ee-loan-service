@@ -81,6 +81,21 @@ public class PostgresRegionModesTest {
     }
 
     @Test
+    public void readBackKeepsWrittenScaleAndRoundsLikeH2() {
+        LoanDao dao = primary.getBean(LoanDao.class);
+        LoanApplication app = auto("PG-SCALE-1", "18000");
+        app.setCollateralValue(new BigDecimal("25000.5"));
+        app.setLtvPct(BigDecimal.ZERO);
+        app.setDtiPct(new BigDecimal("1.23456"));
+        dao.insert(app);
+        LoanApplication back = dao.findById("PG-SCALE-1");
+        assertEquals("18000", back.getRequestedAmount().toString());
+        assertEquals("25000.5", back.getCollateralValue().toString());
+        assertEquals("0", back.getLtvPct().toString());
+        assertEquals("1.2346", back.getDtiPct().toString());
+    }
+
+    @Test
     public void reprocessFallsBackFromInsertToUpdate() throws Exception {
         LoanApplicationManager mgr = primary.getBean(LoanApplicationManager.class);
         mgr.processApplication(auto("PG-RB-2", "20000"));
@@ -105,7 +120,7 @@ public class PostgresRegionModesTest {
 
     @Test
     public void primaryRanFlywayIntoLoanSvcSchema() throws Exception {
-        assertEquals("2", query("SELECT COUNT(*) FROM loan_svc.flyway_schema_history WHERE success AND version IS NOT NULL"));
+        assertEquals("3", query("SELECT COUNT(*) FROM loan_svc.flyway_schema_history WHERE success AND version IS NOT NULL"));
         assertEquals("15s", query("SHOW statement_timeout"));
     }
 

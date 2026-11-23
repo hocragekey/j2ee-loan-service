@@ -876,3 +876,8 @@ Implemented on top of `devin/1795380000-demo-combined`:
   write-forwardable). Insert-then-update fallback in `LoanApplicationManager` is unchanged.
 - `PostgresParityTest` runs the 16-case golden matrix on PostgreSQL 16 (Testcontainers);
   `PostgresRegionModesTest` covers read-back, the fallback, upsert and the secondary-region mode.
+- Read-back parity (TEST-03): PostgreSQL padded `numeric(p,s)` values to the column scale (`18000.00`,
+  `0.0000`) while H2 1.4/2.x keep the written scale (`18000`, `0`), which changed `/underwrite`. V3 makes the
+  six `ln_appl` decimals unconstrained `numeric` with range CHECKs, and `LoanDao.fit` rounds HALF_UP past the
+  old scale like H2. `UnderwriteReadbackRenderingTest` compares the page for all 16 golden cases on H2 and
+  PostgreSQL with a capture from the legacy build.

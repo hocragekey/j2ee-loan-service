@@ -1,0 +1,674 @@
+# /underwrite read-back HTML for the 16 golden cases, captured from the legacy build (loan-service:legacy,
+# Java 8 / Tomcat 9 / H2 1.4.200) via POST /apply then GET /underwrite?applId=. Application IDs normalized to LA<id>.
+=== C10001-AUTO
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10001</td></tr>
+    <tr><th>Product</th><td>AUTO</td></tr>
+    <tr><th>Amount</th><td>18000</td></tr>
+    <tr><th>FICO</th><td>661</td></tr>
+    <tr><th>DTI %</th><td>23.0217</td></tr>
+    <tr><th>LTV %</th><td>80.0000</td></tr>
+    <tr><th>Base Rate</th><td>5.9900</td></tr>
+    <tr><th>Final Rate</th><td>5.9900</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>A
+        (Approved)</td></tr>
+    <tr><th>Status</th><td>APPROVED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10001-MORTGAGE
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10001</td></tr>
+    <tr><th>Product</th><td>MORTGAGE</td></tr>
+    <tr><th>Amount</th><td>300000</td></tr>
+    <tr><th>FICO</th><td>661</td></tr>
+    <tr><th>DTI %</th><td>33.0434</td></tr>
+    <tr><th>LTV %</th><td>78.9474</td></tr>
+    <tr><th>Base Rate</th><td>6.7500</td></tr>
+    <tr><th>Final Rate</th><td>6.7500</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>R
+        (Refer to underwriter)</td></tr>
+    <tr><th>Status</th><td>REFER</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10001-HELOC
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10001</td></tr>
+    <tr><th>Product</th><td>HELOC</td></tr>
+    <tr><th>Amount</th><td>50000</td></tr>
+    <tr><th>FICO</th><td>661</td></tr>
+    <tr><th>DTI %</th><td>24.8914</td></tr>
+    <tr><th>LTV %</th><td>26.3158</td></tr>
+    <tr><th>Base Rate</th><td>7.2500</td></tr>
+    <tr><th>Final Rate</th><td>7.2500</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>A
+        (Approved)</td></tr>
+    <tr><th>Status</th><td>APPROVED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10001-PERSONAL
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10001</td></tr>
+    <tr><th>Product</th><td>PERSONAL</td></tr>
+    <tr><th>Amount</th><td>10000</td></tr>
+    <tr><th>FICO</th><td>661</td></tr>
+    <tr><th>DTI %</th><td>22.6449</td></tr>
+    <tr><th>LTV %</th><td>0</td></tr>
+    <tr><th>Base Rate</th><td>9.9900</td></tr>
+    <tr><th>Final Rate</th><td>9.9900</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>A
+        (Approved)</td></tr>
+    <tr><th>Status</th><td>APPROVED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10002-AUTO
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10002</td></tr>
+    <tr><th>Product</th><td>AUTO</td></tr>
+    <tr><th>Amount</th><td>18000</td></tr>
+    <tr><th>FICO</th><td>619</td></tr>
+    <tr><th>DTI %</th><td>42.6176</td></tr>
+    <tr><th>LTV %</th><td>80.0000</td></tr>
+    <tr><th>Base Rate</th><td>5.9900</td></tr>
+    <tr><th>Final Rate</th><td>6.4900</td></tr>
+    <tr><th>Eligibility</th><td>N</td></tr>
+    <tr><th>Decision</th><td>D
+        (Declined)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10002-MORTGAGE
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10002</td></tr>
+    <tr><th>Product</th><td>MORTGAGE</td></tr>
+    <tr><th>Amount</th><td>300000</td></tr>
+    <tr><th>FICO</th><td>619</td></tr>
+    <tr><th>DTI %</th><td>56.1764</td></tr>
+    <tr><th>LTV %</th><td>78.9474</td></tr>
+    <tr><th>Base Rate</th><td>6.7500</td></tr>
+    <tr><th>Final Rate</th><td>7.2500</td></tr>
+    <tr><th>Eligibility</th><td>N</td></tr>
+    <tr><th>Decision</th><td>D
+        (Declined)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10002-HELOC
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10002</td></tr>
+    <tr><th>Product</th><td>HELOC</td></tr>
+    <tr><th>Amount</th><td>50000</td></tr>
+    <tr><th>FICO</th><td>619</td></tr>
+    <tr><th>DTI %</th><td>45.1471</td></tr>
+    <tr><th>LTV %</th><td>26.3158</td></tr>
+    <tr><th>Base Rate</th><td>7.2500</td></tr>
+    <tr><th>Final Rate</th><td>7.7500</td></tr>
+    <tr><th>Eligibility</th><td>N</td></tr>
+    <tr><th>Decision</th><td>D
+        (Declined)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10002-PERSONAL
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10002</td></tr>
+    <tr><th>Product</th><td>PERSONAL</td></tr>
+    <tr><th>Amount</th><td>10000</td></tr>
+    <tr><th>FICO</th><td>619</td></tr>
+    <tr><th>DTI %</th><td>42.1078</td></tr>
+    <tr><th>LTV %</th><td>0</td></tr>
+    <tr><th>Base Rate</th><td>9.9900</td></tr>
+    <tr><th>Final Rate</th><td>10.4900</td></tr>
+    <tr><th>Eligibility</th><td>N</td></tr>
+    <tr><th>Decision</th><td>D
+        (Declined)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10003-AUTO
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10003</td></tr>
+    <tr><th>Product</th><td>AUTO</td></tr>
+    <tr><th>Amount</th><td>18000</td></tr>
+    <tr><th>FICO</th><td>665</td></tr>
+    <tr><th>DTI %</th><td>23.0727</td></tr>
+    <tr><th>LTV %</th><td>80.0000</td></tr>
+    <tr><th>Base Rate</th><td>5.9900</td></tr>
+    <tr><th>Final Rate</th><td>6.2400</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>A
+        (Approved)</td></tr>
+    <tr><th>Status</th><td>APPROVED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10003-MORTGAGE
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10003</td></tr>
+    <tr><th>Product</th><td>MORTGAGE</td></tr>
+    <tr><th>Amount</th><td>300000</td></tr>
+    <tr><th>FICO</th><td>665</td></tr>
+    <tr><th>DTI %</th><td>31.4545</td></tr>
+    <tr><th>LTV %</th><td>78.9474</td></tr>
+    <tr><th>Base Rate</th><td>6.7500</td></tr>
+    <tr><th>Final Rate</th><td>7.0000</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>R
+        (Refer to underwriter)</td></tr>
+    <tr><th>Status</th><td>REFER</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10003-HELOC
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10003</td></tr>
+    <tr><th>Product</th><td>HELOC</td></tr>
+    <tr><th>Amount</th><td>50000</td></tr>
+    <tr><th>FICO</th><td>665</td></tr>
+    <tr><th>DTI %</th><td>24.6364</td></tr>
+    <tr><th>LTV %</th><td>26.3158</td></tr>
+    <tr><th>Base Rate</th><td>7.2500</td></tr>
+    <tr><th>Final Rate</th><td>7.5000</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>A
+        (Approved)</td></tr>
+    <tr><th>Status</th><td>APPROVED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10003-PERSONAL
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10003</td></tr>
+    <tr><th>Product</th><td>PERSONAL</td></tr>
+    <tr><th>Amount</th><td>10000</td></tr>
+    <tr><th>FICO</th><td>665</td></tr>
+    <tr><th>DTI %</th><td>22.7576</td></tr>
+    <tr><th>LTV %</th><td>0</td></tr>
+    <tr><th>Base Rate</th><td>9.9900</td></tr>
+    <tr><th>Final Rate</th><td>10.2400</td></tr>
+    <tr><th>Eligibility</th><td>Y</td></tr>
+    <tr><th>Decision</th><td>A
+        (Approved)</td></tr>
+    <tr><th>Status</th><td>APPROVED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10004-AUTO
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10004</td></tr>
+    <tr><th>Product</th><td>AUTO</td></tr>
+    <tr><th>Amount</th><td>18000</td></tr>
+    <tr><th>FICO</th><td>null</td></tr>
+    <tr><th>DTI %</th><td>null</td></tr>
+    <tr><th>LTV %</th><td>null</td></tr>
+    <tr><th>Base Rate</th><td>null</td></tr>
+    <tr><th>Final Rate</th><td>null</td></tr>
+    <tr><th>Eligibility</th><td>WL</td></tr>
+    <tr><th>Decision</th><td>null
+        (Error / incomplete)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10004-MORTGAGE
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10004</td></tr>
+    <tr><th>Product</th><td>MORTGAGE</td></tr>
+    <tr><th>Amount</th><td>300000</td></tr>
+    <tr><th>FICO</th><td>null</td></tr>
+    <tr><th>DTI %</th><td>null</td></tr>
+    <tr><th>LTV %</th><td>null</td></tr>
+    <tr><th>Base Rate</th><td>null</td></tr>
+    <tr><th>Final Rate</th><td>null</td></tr>
+    <tr><th>Eligibility</th><td>WL</td></tr>
+    <tr><th>Decision</th><td>null
+        (Error / incomplete)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10004-HELOC
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10004</td></tr>
+    <tr><th>Product</th><td>HELOC</td></tr>
+    <tr><th>Amount</th><td>50000</td></tr>
+    <tr><th>FICO</th><td>null</td></tr>
+    <tr><th>DTI %</th><td>null</td></tr>
+    <tr><th>LTV %</th><td>null</td></tr>
+    <tr><th>Base Rate</th><td>null</td></tr>
+    <tr><th>Final Rate</th><td>null</td></tr>
+    <tr><th>Eligibility</th><td>WL</td></tr>
+    <tr><th>Decision</th><td>null
+        (Error / incomplete)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>
+=== C10004-PERSONAL
+
+
+
+
+
+<html>
+<head>
+    <title>Underwriting Result</title>
+    <style>
+        body { font-family: Verdana, Arial, sans-serif; margin: 24px; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #666; padding: 4px 8px; }
+    </style>
+</head>
+<body>
+<h2>Underwriting Result</h2>
+
+<table>
+    <tr><th>Application ID</th><td>LA<id></td></tr>
+    <tr><th>Customer</th><td>C10004</td></tr>
+    <tr><th>Product</th><td>PERSONAL</td></tr>
+    <tr><th>Amount</th><td>10000</td></tr>
+    <tr><th>FICO</th><td>null</td></tr>
+    <tr><th>DTI %</th><td>null</td></tr>
+    <tr><th>LTV %</th><td>null</td></tr>
+    <tr><th>Base Rate</th><td>null</td></tr>
+    <tr><th>Final Rate</th><td>null</td></tr>
+    <tr><th>Eligibility</th><td>WL</td></tr>
+    <tr><th>Decision</th><td>null
+        (Error / incomplete)</td></tr>
+    <tr><th>Status</th><td>DECLINED</td></tr>
+    <tr><th>Last Error</th><td>null</td></tr>
+</table>
+
+
+
+
+
+<p><a href="apply">New application</a> | <a href="index.jsp">Home</a></p>
+</body>
+</html>

@@ -46,6 +46,11 @@ def check(cond, msg):
         failures.append(msg)
 
 
+# V3: ln_appl decimals are unconstrained numeric so PostgreSQL keeps the written scale like H2
+# (read-back parity, TEST-03); range CHECKs keep the old integer-digit limits.
+SCALE_PRESERVING = {("ln_appl", c) for c in ("req_amt", "collat_val", "ltv_pct", "dti_pct", "base_rate", "final_rate")}
+
+
 H2_TYPES = [
     (r"VARCHAR\((\d+)\)", lambda m: f"character varying({m[1]})"),
     (r"CHAR\((\d+)\)", lambda m: f"character({m[1]})"),
@@ -128,7 +133,7 @@ def main():
 
         print("==> Flyway history")
         hist = sql("SELECT version, success FROM flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank")
-        check(hist == [["1", "t"], ["2", "t"]], f"V1 and V2 applied successfully ({hist})")
+        check(hist == [["1", "t"], ["2", "t"], ["3", "t"]], f"V1-V3 applied successfully ({hist})")
 
         print("==> tables and columns match schema.sql")
         actual_tables = {r[0] for r in sql(
@@ -142,7 +147,8 @@ def main():
                 "JOIN pg_namespace n ON n.oid = c.relnamespace "
                 f"WHERE n.nspname = '{SCHEMA}' AND c.relname = '{table}' AND a.attnum > 0 "
                 "AND NOT a.attisdropped ORDER BY a.attnum")
-            expected = [[c["name"], c["type"], "t" if c["identity"] else "f"] for c in cols]
+            expected = [[c["name"], "numeric" if (table, c["name"]) in SCALE_PRESERVING else c["type"],
+                         "t" if c["identity"] else "f"] for c in cols]
             check(actual == expected, f"{table}: {len(cols)} columns, names/types/order/identity")
             pk = [r[0] for r in sql(
                 "SELECT a.attname FROM pg_index i JOIN pg_attribute a "
@@ -180,7 +186,7 @@ def main():
         print("==> re-running migrate is a no-op")
         compose("run", "--rm", "flyway", "migrate", capture=True)
         again = sql("SELECT count(*) FROM flyway_schema_history WHERE version IS NOT NULL")
-        check(again == [["2"]], "no new migrations applied")
+        check(again == [["3"]], "no new migrations applied")
     finally:
         if not keep:
             compose("down", "-v", "--remove-orphans", capture=True)
