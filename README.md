@@ -1,7 +1,5 @@
 # Legacy Loan Service (J2EE-style WAR)
 
-On-premise style **Java 8** loan origination monolith.
-
 Single deployable WAR: servlets, JSP scriptlets, JDBC, and domain managers for loan eligibility and underwriting.
 
 | Attribute | Value |
